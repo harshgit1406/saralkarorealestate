@@ -162,6 +162,15 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <label className={`grid gap-1.5 text-[12px] font-semibold text-[#596498] ${className}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  )
+}
+
 export function LeadsPage({
   data,
   onRefresh,
@@ -316,26 +325,26 @@ export function LeadsPage({
       </div>
 
       <section className="mt-5 grid gap-4 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] xl:grid-cols-[1fr_160px_180px_150px]">
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lead name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-        <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-        <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-        <input value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} placeholder="Budget" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-        <select value={projectId} onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+        <Field label="Lead Name"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lead name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+        <Field label="Phone"><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+        <Field label="Email"><input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+        <Field label="Budget"><input value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} placeholder="Budget" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+        <Field label="Project"><select value={projectId} onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
           <option value="">Project</option>
           {(data?.projects ?? []).map((project) => <option key={String(project.id)} value={String(project.id)}>{String(project.name)}</option>)}
-        </select>
-        <select value={sourceId} onChange={(event) => setSourceId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+        </select></Field>
+        <Field label="Lead Source"><select value={sourceId} onChange={(event) => setSourceId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
           <option value="">Source</option>
           {(data?.sources ?? []).map((source) => <option key={String(source.id)} value={String(source.id)}>{String(source.source_name)}</option>)}
-        </select>
-        <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+        </select></Field>
+        <Field label="Owner"><select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
           <option value="">Owner</option>
           {(data?.users ?? []).map((user) => <option key={String(user.id)} value={String(user.id)}>{String(user.full_name)}</option>)}
-        </select>
-        <select value={priority} onChange={(event) => setPriority(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+        </select></Field>
+        <Field label="Priority"><select value={priority} onChange={(event) => setPriority(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
           {['low', 'medium', 'high', 'urgent'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
-        </select>
-        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder="Requirement, unit type, location, notes..." rows={2} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none xl:col-span-3" />
+        </select></Field>
+        <Field label="Requirements" className="xl:col-span-3"><textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder="Requirement, unit type, location, notes..." rows={2} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
         <button type="button" onClick={handleCreate} disabled={isSaving} className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white disabled:opacity-60">
           {isSaving ? 'Saving' : 'Add Lead + Auto Call'}
         </button>
@@ -401,13 +410,13 @@ export function LeadsPage({
                 <a href={selectedLead.email ? `mailto:${String(selectedLead.email)}` : '#'} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#F5F7FF] px-3 py-2 text-[12px] font-semibold text-[#13265C]"><Mail className="h-4 w-4" /> Email</a>
               </div>
               <div className="mt-4 grid gap-2">
-                <select value={String(selectedLead.status)} onChange={(event) => handleQuickStatus(selectedLead.id, event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                <Field label="Lead Status"><select value={String(selectedLead.status)} onChange={(event) => handleQuickStatus(selectedLead.id, event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none">
                   {pipelineStages.concat(['junk']).map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
-                </select>
-                <select value={String(selectedLead.assignedToId ?? '')} onChange={(event) => handleAssign(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                </select></Field>
+                <Field label="Assigned Owner"><select value={String(selectedLead.assignedToId ?? '')} onChange={(event) => handleAssign(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none">
                   <option value="">Assign owner</option>
                   {(data?.users ?? []).map((user) => <option key={String(user.id)} value={String(user.id)}>{String(user.full_name)}</option>)}
-                </select>
+                </select></Field>
               </div>
               <div className="mt-5 rounded-[8px] bg-[#F7F8FE] p-4 text-[13px] text-[#596498]">
                 <p>Source: <span className="font-semibold text-[#13265C]">{String(selectedLead.source ?? 'Manual')}</span></p>
@@ -415,16 +424,16 @@ export function LeadsPage({
                 <p className="mt-2">Next follow-up: <span className="font-semibold text-[#13265C]">{selectedLead.nextFollowUpAt ? new Date(String(selectedLead.nextFollowUpAt)).toLocaleString() : 'Not scheduled'}</span></p>
               </div>
               <div className="mt-5 grid gap-2">
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add note for timeline..." rows={3} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                <Field label="Timeline Note"><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add note for timeline..." rows={3} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none" /></Field>
                 <button type="button" onClick={handleAddNote} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#13265C] px-3 py-2 text-[13px] font-semibold text-white"><Send className="h-4 w-4" /> Add Note</button>
               </div>
               <div className="mt-5 grid gap-2">
-                <input value={followupTitle} onChange={(event) => setFollowupTitle(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                <Field label="Follow-Up Title"><input value={followupTitle} onChange={(event) => setFollowupTitle(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none" /></Field>
                 <div className="grid grid-cols-2 gap-2">
-                  <select value={followupType} onChange={(event) => setFollowupType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                  <Field label="Follow-Up Type"><select value={followupType} onChange={(event) => setFollowupType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none">
                     {['call', 'whatsapp', 'site_visit', 'meeting', 'email', 'task'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
-                  </select>
-                  <input type="datetime-local" value={followupDueAt} onChange={(event) => setFollowupDueAt(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                  </select></Field>
+                  <Field label="Due Date"><input type="datetime-local" value={followupDueAt} onChange={(event) => setFollowupDueAt(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] font-normal text-[#13265C] outline-none" /></Field>
                 </div>
                 <button type="button" onClick={handleAddFollowup} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#B85412] px-3 py-2 text-[13px] font-semibold text-white"><Plus className="h-4 w-4" /> Schedule Follow-up</button>
               </div>
@@ -480,7 +489,7 @@ export function LeadsPage({
         </div>
         <Section title="Portal Integrations">
           <div className="grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
-            <input value={integrationToken} onChange={(event) => setIntegrationToken(event.target.value)} placeholder="Webhook token for new sources" className="rounded-[8px] border border-[#EEF1FA] bg-white px-3 py-3 text-[13px] outline-none" />
+            <Field label="Webhook Token"><input value={integrationToken} onChange={(event) => setIntegrationToken(event.target.value)} placeholder="Webhook token for new sources" className="rounded-[8px] border border-[#EEF1FA] bg-white px-3 py-3 text-[13px] font-normal text-[#13265C] outline-none" /></Field>
             <div className="grid max-h-[430px] gap-2 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-1">
             {(data?.integrations ?? []).map((integration) => (
               <article key={String(integration.key)} className="rounded-[8px] border border-[#EEF1FA] bg-[#FCFDFF] p-3">
@@ -604,12 +613,12 @@ export function CustomerPage({
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={panNo} onChange={(event) => setPanNo(event.target.value)} placeholder="PAN number" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={aadhaarNo} onChange={(event) => setAadhaarNo(event.target.value)} placeholder="Aadhaar number" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Address" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+            <Field label="Full Name"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Phone"><input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Email"><input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="PAN Number"><input value={panNo} onChange={(event) => setPanNo(event.target.value)} placeholder="PAN number" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Aadhaar Number"><input value={aadhaarNo} onChange={(event) => setAadhaarNo(event.target.value)} placeholder="Aadhaar number" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Address"><input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Address" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
           </div>
           <button type="button" onClick={handleCreateCustomer} className="mt-3 rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white">
             Add Customer
@@ -686,9 +695,9 @@ export function CustomerPage({
 
         <Section title="Broker Network">
           <div className="mb-3 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] md:grid-cols-3">
-            <input value={brokerName} onChange={(event) => setBrokerName(event.target.value)} placeholder="Broker name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={brokerPhone} onChange={(event) => setBrokerPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-            <input value={brokerCompany} onChange={(event) => setBrokerCompany(event.target.value)} placeholder="Company" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+            <Field label="Broker Name"><input value={brokerName} onChange={(event) => setBrokerName(event.target.value)} placeholder="Broker name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Phone"><input value={brokerPhone} onChange={(event) => setBrokerPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Company"><input value={brokerCompany} onChange={(event) => setBrokerCompany(event.target.value)} placeholder="Company" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
             <button type="button" onClick={handleCreateBroker} className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white md:col-span-3">Add Broker</button>
           </div>
           <DataTable
@@ -810,10 +819,11 @@ export function FinancePage({
 
       <Section title="Payments And Receipts">
         <div className="mb-3 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] md:grid-cols-[1fr_140px_140px_1fr_140px]">
+          <Field label="Booking">
           <select
             value={selectedBookingId}
             onChange={(event) => setSelectedBookingId(event.target.value ? Number(event.target.value) : '')}
-            className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
+            className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
           >
             <option value="">Select booking</option>
             {(data?.bookings ?? []).map((booking) => (
@@ -822,13 +832,17 @@ export function FinancePage({
               </option>
             ))}
           </select>
+          </Field>
+          <Field label="Amount">
           <input
             value={paymentAmount}
             onChange={(event) => setPaymentAmount(event.target.value)}
             type="number"
-            className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
+            className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
           />
-          <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          </Field>
+          <Field label="Payment Mode">
+          <select value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
             <option value="upi">UPI</option>
             <option value="bank_transfer">Bank transfer</option>
             <option value="cheque">Cheque</option>
@@ -836,7 +850,8 @@ export function FinancePage({
             <option value="card">Card</option>
             <option value="loan">Loan</option>
           </select>
-          <input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} placeholder="Reference no" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+          </Field>
+          <Field label="Reference Number"><input value={referenceNo} onChange={(event) => setReferenceNo(event.target.value)} placeholder="Reference no" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
           <button
             type="button"
             onClick={handleAddPayment}
@@ -844,13 +859,13 @@ export function FinancePage({
           >
             Add Payment
           </button>
-          <select value={paymentType} onChange={(event) => setPaymentType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none md:col-span-5">
+          <Field label="Transaction Type" className="md:col-span-5"><select value={paymentType} onChange={(event) => setPaymentType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
             <option value="booking">Booking amount</option>
             <option value="stage">Stage payment</option>
             <option value="refund">Refund</option>
             <option value="adjustment">Adjustment</option>
             <option value="other">Other</option>
-          </select>
+          </select></Field>
         </div>
         <DataTable
           emptyText="No payments found."
@@ -885,13 +900,13 @@ export function FinancePage({
 
       <Section title="Payment Schemes">
         <div className="mb-3 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] md:grid-cols-[1fr_220px_140px]">
-          <input value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder="New payment scheme" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-          <select value={planType} onChange={(event) => setPlanType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          <Field label="Scheme Name"><input value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder="New payment scheme" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+          <Field label="Scheme Type"><select value={planType} onChange={(event) => setPlanType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
             <option value="construction_linked">Construction linked</option>
             <option value="time_linked">Time linked</option>
             <option value="down_payment">Down payment</option>
             <option value="custom">Custom</option>
-          </select>
+          </select></Field>
           <button type="button" onClick={handleCreatePlan} className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white">Create Plan</button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -985,11 +1000,11 @@ export function HrmsPage({
         <div>
           <Section title="Users">
             <div className="mb-3 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] md:grid-cols-2 xl:grid-cols-3">
-              <input value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} placeholder="Employee name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-              <input value={employeeUsername} onChange={(event) => setEmployeeUsername(event.target.value)} placeholder="Username" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-              <input value={employeeEmail} onChange={(event) => setEmployeeEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-              <input value={employeePhone} onChange={(event) => setEmployeePhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
-              <input value={employeePassword} onChange={(event) => setEmployeePassword(event.target.value)} placeholder="Temporary password" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+              <Field label="Employee Name"><input value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} placeholder="Employee name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+              <Field label="Username"><input value={employeeUsername} onChange={(event) => setEmployeeUsername(event.target.value)} placeholder="Username" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+              <Field label="Email"><input value={employeeEmail} onChange={(event) => setEmployeeEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+              <Field label="Phone"><input value={employeePhone} onChange={(event) => setEmployeePhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+              <Field label="Temporary Password"><input value={employeePassword} onChange={(event) => setEmployeePassword(event.target.value)} placeholder="Temporary password" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
               <button type="button" onClick={handleCreateUser} className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white">Create User</button>
             </div>
             <DataTable
@@ -1053,12 +1068,12 @@ export function HrmsPage({
         <div className="space-y-5">
           <div className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
             <h2 className="text-[16px] font-semibold text-[#13265C]">Assign User Roles</h2>
-            <select value={selectedUserId ?? ''} onChange={(event) => setSelectedUserId(event.target.value ? Number(event.target.value) : null)} className="mt-4 w-full rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+            <Field label="User" className="mt-4"><select value={selectedUserId ?? ''} onChange={(event) => setSelectedUserId(event.target.value ? Number(event.target.value) : null)} className="w-full rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
               <option value="">Select user</option>
               {(data?.users ?? []).map((user) => (
                 <option key={String(user.id)} value={Number(user.id)}>{asText(user.name)}</option>
               ))}
-            </select>
+            </select></Field>
             <div className="mt-3 grid gap-2">
               {(data?.roles ?? []).map((role) => {
                 const id = asNumber(role.id)
@@ -1094,7 +1109,7 @@ export function HrmsPage({
       <Section title="Editable Access Control">
         <div className="grid gap-4 rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)] lg:grid-cols-[260px_minmax(0,1fr)]">
           <div>
-            <input value={roleName} onChange={(event) => setRoleName(event.target.value)} placeholder="New role name" className="w-full rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+            <Field label="Role Name"><input value={roleName} onChange={(event) => setRoleName(event.target.value)} placeholder="New role name" className="w-full rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
             <button type="button" onClick={handleCreateRole} className="mt-3 w-full rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white">Create Role</button>
             <div className="mt-4 space-y-2">
               {(data?.roles ?? []).map((role) => (
@@ -1210,11 +1225,13 @@ export function CommunicationPage({
         </div>
       </section>
       <section className="mt-5 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] lg:grid-cols-[minmax(0,1fr)_140px_140px]">
+        <Field label="Message Text">
         <input
           value={messageText}
           onChange={(event) => setMessageText(event.target.value)}
-          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
+          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
         />
+        </Field>
         <button
           type="button"
           onClick={handleQueueMessage}
@@ -1327,13 +1344,15 @@ export function SettingsPage({
               <span className="text-right font-semibold text-[#13265C]">{String(value ?? 'Not set')}</span>
             </div>
           ))}
-          <div className="mt-5 flex gap-3">
+          <div className="mt-5 flex items-end gap-3">
+            <Field label="Organization Phone" className="min-w-0 flex-1">
             <input
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               placeholder="Organization phone"
-              className="min-w-0 flex-1 rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
+              className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
             />
+            </Field>
             <button
               type="button"
               onClick={handleSaveOrg}
