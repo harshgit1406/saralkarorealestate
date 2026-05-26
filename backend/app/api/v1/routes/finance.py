@@ -43,6 +43,14 @@ PLAN_STAGE_FIELDS = [
     "requires_payment",
     "stage_type",
 ]
+BOOKING_BROKER_FIELDS = ["booking_id", "broker_id", "commission_amount", "commission_percentage"]
+BOOKING_APPLICANT_FIELDS = [
+    "booking_id",
+    "customer_id",
+    "applicant_role",
+    "ownership_percentage",
+    "is_primary",
+]
 
 
 async def next_booking_code(connection: asyncpg.Connection, organization_id: int) -> str:
@@ -309,6 +317,64 @@ async def create_payment_plan_stage(
             f"""
             INSERT INTO payment_plan_stages ({", ".join(columns)})
             VALUES ({", ".join(f"${i}" for i in range(1, len(columns) + 1))})
+            RETURNING *
+            """,
+            current_user["organization_id"],
+            *data.values(),
+        )
+    return json_ready(row)
+
+
+@router.post("/booking-brokers", status_code=status.HTTP_201_CREATED)
+async def create_booking_broker(
+    payload: dict[str, Any] = Body(...),
+    current_user: asyncpg.Record = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+) -> dict[str, Any]:
+    async with pool.acquire() as connection:
+        await ensure_permission(connection, current_user, "finance.create")
+        data = clean_payload(payload, BOOKING_BROKER_FIELDS)
+        if not data.get("booking_id") or not data.get("broker_id"):
+            raise HTTPException(status_code=422, detail="booking_id and broker_id are required")
+        columns = ["organization_id", *data.keys()]
+        row = await connection.fetchrow(
+            f"""
+            INSERT INTO booking_brokers ({", ".join(columns)})
+            VALUES ({", ".join(f"${i}" for i in range(1, len(columns) + 1))})
+            ON CONFLICT (booking_id, broker_id) DO UPDATE
+            SET commission_amount = EXCLUDED.commission_amount,
+                commission_percentage = EXCLUDED.commission_percentage
+            RETURNING *
+            """,
+            current_user["organization_id"],
+            *data.values(),
+        )
+    return json_ready(row)
+
+
+@router.post("/booking-applicants", status_code=status.HTTP_201_CREATED)
+async def create_booking_applicant(
+    payload: dict[str, Any] = Body(...),
+    current_user: asyncpg.Record = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db_pool),
+) -> dict[str, Any]:
+    async with pool.acquire() as connection:
+        await ensure_permission(connection, current_user, "finance.create")
+        data = clean_payload(payload, BOOKING_APPLICANT_FIELDS)
+        if not data.get("booking_id") or not data.get("customer_id"):
+            raise HTTPException(status_code=422, detail="booking_id and customer_id are required")
+        data.setdefault("applicant_role", "co_applicant")
+        data.setdefault("ownership_percentage", 0)
+        data.setdefault("is_primary", False)
+        columns = ["organization_id", *data.keys()]
+        row = await connection.fetchrow(
+            f"""
+            INSERT INTO booking_applicants ({", ".join(columns)})
+            VALUES ({", ".join(f"${i}" for i in range(1, len(columns) + 1))})
+            ON CONFLICT (booking_id, customer_id) DO UPDATE
+            SET applicant_role = EXCLUDED.applicant_role,
+                ownership_percentage = EXCLUDED.ownership_percentage,
+                is_primary = EXCLUDED.is_primary
             RETURNING *
             """,
             current_user["organization_id"],
