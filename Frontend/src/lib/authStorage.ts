@@ -19,6 +19,16 @@ export function storeAuthTokens(accessToken: string, refreshToken: string, keepS
   otherStorage.removeItem(REFRESH_TOKEN_KEY)
 }
 
+export function replaceStoredAuthTokens(accessToken: string, refreshToken: string) {
+  const storage = localStorage.getItem(REFRESH_TOKEN_KEY) ? localStorage : sessionStorage
+  storage.setItem(ACCESS_TOKEN_KEY, accessToken)
+  storage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+
+  const otherStorage = storage === localStorage ? sessionStorage : localStorage
+  otherStorage.removeItem(ACCESS_TOKEN_KEY)
+  otherStorage.removeItem(REFRESH_TOKEN_KEY)
+}
+
 export function clearAuthTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(REFRESH_TOKEN_KEY)
