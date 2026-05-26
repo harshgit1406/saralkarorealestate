@@ -113,6 +113,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
   const [selectedEntityId, setSelectedEntityId] = useState<number | null>(null)
   const [isTableView, setIsTableView] = useState(false)
   const [isInfoOpen, setIsInfoOpen] = useState(true)
+  const [activeInfoTab, setActiveInfoTab] = useState<'overview' | 'parties' | 'sale' | 'payments'>('overview')
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [addingParentId, setAddingParentId] = useState<number | null>(null)
   const [childName, setChildName] = useState('')
@@ -219,6 +220,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
     setEditFacing(String(children[0]?.facing ?? plot?.facing ?? ''))
     setEditNote(String(children[0]?.displayNote ?? plot?.displayNote ?? ''))
     setActionMessage(null)
+    setActiveInfoTab('overview')
     setIsTableView(false)
   }
 
@@ -241,6 +243,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
     setEditPrice(String(unit.price ?? ''))
     setEditFacing(String(unit.facing ?? ''))
     setEditNote(String(unit.displayNote ?? ''))
+    setActiveInfoTab('overview')
     setIsTableView(false)
   }
 
@@ -765,6 +768,49 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                 {String(selectedEntity.code)} | {titleCase(selectedEntity.type)}
               </p>
 
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                <div className="rounded-[10px] bg-[#F7F8FE] p-3 text-center">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7A84AB]">Status</p>
+                  <p className="mt-1 text-[13px] font-bold text-[#13265C]">{titleCase(selectedEntity.status)}</p>
+                </div>
+                <div className="rounded-[10px] bg-[#F7F8FE] p-3 text-center">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7A84AB]">Area</p>
+                  <p className="mt-1 text-[13px] font-bold text-[#13265C]">{String(selectedEntity.area ?? 0)}</p>
+                </div>
+                <div className="rounded-[10px] bg-[#F7F8FE] p-3 text-center">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7A84AB]">Price</p>
+                  <p className="mt-1 text-[13px] font-bold text-[#13265C]">{formatCurrency(selectedEntity.price)}</p>
+                </div>
+              </div>
+
+              {actionMessage ? (
+                <p className="mt-4 rounded-[8px] bg-[#FFF7F1] px-3 py-3 text-[13px] font-medium text-[#B85412]">
+                  {actionMessage}
+                </p>
+              ) : null}
+
+              <div className="mt-5 grid grid-cols-4 gap-1 rounded-[10px] bg-[#F5F7FF] p-1">
+                {[
+                  ['overview', 'Overview'],
+                  ['parties', 'People'],
+                  ['sale', 'Sale'],
+                  ['payments', 'Pay'],
+                ].map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveInfoTab(tab as 'overview' | 'parties' | 'sale' | 'payments')}
+                    className={`rounded-[8px] px-2 py-2 text-[12px] font-semibold ${
+                      activeInfoTab === tab ? 'bg-white text-[#13265C] shadow-sm' : 'text-[#596498]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {activeInfoTab === 'overview' ? (
+                <>
               {selectedFloors.length ? (
                 <section className="mt-5">
                   <h3 className="text-[15px] font-semibold text-[#13265C]">Floors under {String(selectedPlot?.code)}</h3>
@@ -861,7 +907,10 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                   })}
                 </div>
               </div>
+                </>
+              ) : null}
 
+              {activeInfoTab === 'parties' ? (
               <section className="mt-5 grid gap-3">
                 <ActionBlock icon={<UserPlus className="h-4 w-4" />} title="Customer">
                   {activeBooking?.customer_name ? (
@@ -916,7 +965,11 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                   <input value={brokerPhone} onChange={(event) => setBrokerPhone(event.target.value)} placeholder="Phone" className={fieldInputClass} />
                   <button type="button" onClick={handleCreateBroker} className={actionButtonClass}>Create Broker</button>
                 </ActionBlock>
+              </section>
+              ) : null}
 
+              {activeInfoTab === 'sale' ? (
+              <section className="mt-5 grid gap-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div className="col-span-2 rounded-[8px] bg-[#F5F7FF] px-3 py-3 text-[12px] text-[#596498]">
                     {activeBooking ? `Active booking: ${String(activeBooking.booking_code)} | ${formatCurrency(activeBooking.booking_amount)}` : 'No active booking'}
@@ -965,17 +1018,19 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                     <HandCoins className="h-4 w-4" /> Create Sale
                   </button>
                 </ActionBlock>
+              </section>
+              ) : null}
 
+              {activeInfoTab === 'payments' ? (
+              <section className="mt-5 grid gap-3">
                 <ActionBlock icon={<CreditCard className="h-4 w-4" />} title="Extra Payment">
+                  <div className="rounded-[8px] bg-[#F7F8FE] px-3 py-2 text-[12px] text-[#596498]">
+                    {activeBooking ? `Payment will be attached to ${String(activeBooking.booking_code)}.` : 'Create a sale or booking before recording payment.'}
+                  </div>
                   <input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Amount" className={fieldInputClass} />
                   <button type="button" onClick={handlePayment} className={actionButtonClass}>Record Payment</button>
                 </ActionBlock>
               </section>
-
-              {actionMessage ? (
-                <p className="mt-4 rounded-[8px] bg-[#FFF7F1] px-3 py-3 text-[13px] font-medium text-[#B85412]">
-                  {actionMessage}
-                </p>
               ) : null}
             </div>
           ) : (
