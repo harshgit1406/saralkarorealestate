@@ -81,6 +81,23 @@ const titleCase = (value: unknown) =>
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 
+function InventoryField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <label className={`grid gap-1.5 text-[12px] font-semibold text-[#596498] ${className}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  )
+}
+
 const toNumber = (value: unknown) => (typeof value === 'number' ? value : Number(value || 0))
 
 function statusColor(status: unknown) {
@@ -706,12 +723,15 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
           <tr key={`add-${itemId}`} className="bg-[#FFFDFC]">
             <td colSpan={8} className="px-4 py-3" style={{ paddingLeft: `${36 + level * 28}px` }}>
               <div className="grid gap-3 rounded-[10px] border border-[#F1C3AA] bg-white p-3 lg:grid-cols-[minmax(0,1fr)_150px_110px_90px]">
+                <InventoryField label="Item Name">
                 <input
                   value={childName}
                   onChange={(event) => setChildName(event.target.value)}
                   placeholder={`New item under ${String(item.name)}`}
                   className={fieldInputClass}
                 />
+                </InventoryField>
+                <InventoryField label="Item Type">
                 <select
                   value={childType}
                   onChange={(event) => setChildType(event.target.value)}
@@ -723,6 +743,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                     </option>
                   ))}
                 </select>
+                </InventoryField>
                 <button
                   type="button"
                   onClick={() => handleCreateChild(item)}
@@ -986,11 +1007,21 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                 </div>
                 {isEditingDetails ? (
                   <div className="mt-4 grid gap-3">
-                    <input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="Name" className="rounded-[8px] border border-[#E3E8F6] bg-white px-3 py-2 text-[13px] outline-none" />
-                    <input value={editArea} onChange={(event) => setEditArea(event.target.value)} placeholder="Saleable area" className="rounded-[8px] border border-[#E3E8F6] bg-white px-3 py-2 text-[13px] outline-none" />
-                    <input value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="Final price" className="rounded-[8px] border border-[#E3E8F6] bg-white px-3 py-2 text-[13px] outline-none" />
-                    <input value={editFacing} onChange={(event) => setEditFacing(event.target.value)} placeholder="Facing" className="rounded-[8px] border border-[#E3E8F6] bg-white px-3 py-2 text-[13px] outline-none" />
-                    <textarea value={editNote} onChange={(event) => setEditNote(event.target.value)} placeholder="Display note" rows={3} className="resize-none rounded-[8px] border border-[#E3E8F6] bg-white px-3 py-2 text-[13px] outline-none" />
+                    <InventoryField label="Inventory Name">
+                      <input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="Name" className={fieldInputClass} />
+                    </InventoryField>
+                    <InventoryField label="Saleable Area">
+                      <input value={editArea} onChange={(event) => setEditArea(event.target.value)} placeholder="Saleable area" className={fieldInputClass} />
+                    </InventoryField>
+                    <InventoryField label="Final Price">
+                      <input value={editPrice} onChange={(event) => setEditPrice(event.target.value)} placeholder="Final price" className={fieldInputClass} />
+                    </InventoryField>
+                    <InventoryField label="Facing">
+                      <input value={editFacing} onChange={(event) => setEditFacing(event.target.value)} placeholder="Facing" className={fieldInputClass} />
+                    </InventoryField>
+                    <InventoryField label="Display Note">
+                      <textarea value={editNote} onChange={(event) => setEditNote(event.target.value)} placeholder="Display note" rows={3} className={`${fieldInputClass} resize-none`} />
+                    </InventoryField>
                     <button type="button" onClick={handleSaveEntity} disabled={isSaving} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#13265C] px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-60">
                       <Save className="h-4 w-4" /> Save Detail
                     </button>
@@ -1055,6 +1086,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       {activeBooking.customer_phone ? ` | ${String(activeBooking.customer_phone)}` : ''}
                     </div>
                   ) : null}
+                  <InventoryField label="Existing Customer">
                   <select
                     value={selectedCustomerId ?? ''}
                     onChange={(event) => setSelectedCustomerId(event.target.value ? Number(event.target.value) : null)}
@@ -1067,18 +1099,20 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       </option>
                     ))}
                   </select>
+                  </InventoryField>
                   {selectedCustomer ? (
                     <div className="rounded-[8px] bg-[#F7F8FE] px-3 py-2 text-[12px] text-[#596498]">
                       Selected: <span className="font-semibold text-[#13265C]">{String(selectedCustomer.full_name)}</span>
                       {selectedCustomer.kyc_status ? ` | KYC ${titleCase(selectedCustomer.kyc_status)}` : ''}
                     </div>
                   ) : null}
-                  <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Customer name" className={fieldInputClass} />
-                  <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Phone" className={fieldInputClass} />
+                  <InventoryField label="New Customer Name"><input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Customer name" className={fieldInputClass} /></InventoryField>
+                  <InventoryField label="New Customer Phone"><input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Phone" className={fieldInputClass} /></InventoryField>
                   <button type="button" onClick={handleCreateCustomer} className={actionButtonClass}>Create Customer</button>
                 </ActionBlock>
 
                 <ActionBlock icon={<Users className="h-4 w-4" />} title="Broker">
+                  <InventoryField label="Existing Broker">
                   <select
                     value={selectedBrokerId ?? ''}
                     onChange={(event) => setSelectedBrokerId(event.target.value ? Number(event.target.value) : null)}
@@ -1091,14 +1125,15 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       </option>
                     ))}
                   </select>
+                  </InventoryField>
                   {selectedBroker ? (
                     <div className="rounded-[8px] bg-[#F7F8FE] px-3 py-2 text-[12px] text-[#596498]">
                       Selected: <span className="font-semibold text-[#13265C]">{String(selectedBroker.full_name)}</span>
                       {selectedBroker.phone ? ` | ${String(selectedBroker.phone)}` : ''}
                     </div>
                   ) : null}
-                  <input value={brokerName} onChange={(event) => setBrokerName(event.target.value)} placeholder="Broker name" className={fieldInputClass} />
-                  <input value={brokerPhone} onChange={(event) => setBrokerPhone(event.target.value)} placeholder="Phone" className={fieldInputClass} />
+                  <InventoryField label="New Broker Name"><input value={brokerName} onChange={(event) => setBrokerName(event.target.value)} placeholder="Broker name" className={fieldInputClass} /></InventoryField>
+                  <InventoryField label="New Broker Phone"><input value={brokerPhone} onChange={(event) => setBrokerPhone(event.target.value)} placeholder="Phone" className={fieldInputClass} /></InventoryField>
                   <button type="button" onClick={handleCreateBroker} className={actionButtonClass}>Create Broker</button>
                 </ActionBlock>
               </section>
@@ -1113,11 +1148,14 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                 </div>
 
                 <ActionBlock icon={<HandCoins className="h-4 w-4" />} title="Sale / Booking">
+                  <InventoryField label="Booking Status">
                   <select value={bookingStatus} onChange={(event) => setBookingStatus(event.target.value)} className={fieldInputClass}>
                     <option value="reserved">Reserve / Hold booking</option>
                     <option value="confirmed">Confirmed booking</option>
                     <option value="completed">Completed sale</option>
                   </select>
+                  </InventoryField>
+                  <InventoryField label="Payment Plan">
                   <select
                     value={selectedPaymentPlanId ?? ''}
                     onChange={(event) => setSelectedPaymentPlanId(event.target.value ? Number(event.target.value) : null)}
@@ -1130,7 +1168,9 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       </option>
                     ))}
                   </select>
-                  <input value={bookingAmount} onChange={(event) => setBookingAmount(event.target.value)} placeholder="Sale price" className={fieldInputClass} />
+                  </InventoryField>
+                  <InventoryField label="Sale Price"><input value={bookingAmount} onChange={(event) => setBookingAmount(event.target.value)} placeholder="Sale price" className={fieldInputClass} /></InventoryField>
+                  <InventoryField label="Existing Co-Applicant">
                   <select
                     value={selectedCoApplicantId ?? ''}
                     onChange={(event) => setSelectedCoApplicantId(event.target.value ? Number(event.target.value) : null)}
@@ -1143,13 +1183,14 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       </option>
                     ))}
                   </select>
-                  <input value={coApplicantName} onChange={(event) => setCoApplicantName(event.target.value)} placeholder="New co-applicant name" className={fieldInputClass} />
-                  <input value={coApplicantPhone} onChange={(event) => setCoApplicantPhone(event.target.value)} placeholder="Co-applicant phone" className={fieldInputClass} />
+                  </InventoryField>
+                  <InventoryField label="New Co-Applicant Name"><input value={coApplicantName} onChange={(event) => setCoApplicantName(event.target.value)} placeholder="New co-applicant name" className={fieldInputClass} /></InventoryField>
+                  <InventoryField label="New Co-Applicant Phone"><input value={coApplicantPhone} onChange={(event) => setCoApplicantPhone(event.target.value)} placeholder="Co-applicant phone" className={fieldInputClass} /></InventoryField>
                   <div className="grid grid-cols-2 gap-2">
-                    <input value={brokerCommissionPercent} onChange={(event) => setBrokerCommissionPercent(event.target.value)} placeholder="Broker %" className={fieldInputClass} />
-                    <input value={brokerCommissionAmount} onChange={(event) => setBrokerCommissionAmount(event.target.value)} placeholder="Broker amount" className={fieldInputClass} />
+                    <InventoryField label="Broker %"><input value={brokerCommissionPercent} onChange={(event) => setBrokerCommissionPercent(event.target.value)} placeholder="Broker %" className={fieldInputClass} /></InventoryField>
+                    <InventoryField label="Broker Amount"><input value={brokerCommissionAmount} onChange={(event) => setBrokerCommissionAmount(event.target.value)} placeholder="Broker amount" className={fieldInputClass} /></InventoryField>
                   </div>
-                  <input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Initial payment amount" className={fieldInputClass} />
+                  <InventoryField label="Initial Payment Amount"><input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Initial payment amount" className={fieldInputClass} /></InventoryField>
                   <button type="button" onClick={() => handleCreateSale()} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#B85412] px-3 py-3 text-[12px] font-semibold text-white">
                     <HandCoins className="h-4 w-4" /> Create Sale
                   </button>
@@ -1163,7 +1204,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                   <div className="rounded-[8px] bg-[#F7F8FE] px-3 py-2 text-[12px] text-[#596498]">
                     {activeBooking ? `Payment will be attached to ${String(activeBooking.booking_code)}.` : 'Create a sale or booking before recording payment.'}
                   </div>
-                  <input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Amount" className={fieldInputClass} />
+                  <InventoryField label="Payment Amount"><input value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="Amount" className={fieldInputClass} /></InventoryField>
                   <button type="button" onClick={handlePayment} className={actionButtonClass}>Record Payment</button>
                 </ActionBlock>
               </section>
