@@ -441,6 +441,7 @@ export function LeadsPage({
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-5">
         <Section title="Platform Performance">
           <DataTable
             emptyText="No source performance yet."
@@ -456,14 +457,30 @@ export function LeadsPage({
             ]}
           />
         </Section>
+        <Section title="Upcoming Follow-ups">
+          <DataTable
+            emptyText="No followups scheduled."
+            rows={(data?.followups ?? []) as RecordItem[]}
+            columns={[
+              { key: 'lead', label: 'Lead' },
+              { key: 'type', label: 'Type' },
+              { key: 'title', label: 'Title' },
+              { key: 'assignedTo', label: 'Owner' },
+              { key: 'status', label: 'Status' },
+              { key: 'dueAt', label: 'Due', render: (row) => row.dueAt ? new Date(String(row.dueAt)).toLocaleString() : 'Not set' },
+            ]}
+          />
+        </Section>
+        </div>
         <Section title="Portal Integrations">
-          <div className="grid gap-3">
+          <div className="grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
             <input value={integrationToken} onChange={(event) => setIntegrationToken(event.target.value)} placeholder="Webhook token for new sources" className="rounded-[8px] border border-[#EEF1FA] bg-white px-3 py-3 text-[13px] outline-none" />
+            <div className="grid max-h-[430px] gap-2 overflow-auto pr-1 sm:grid-cols-2 xl:grid-cols-1">
             {(data?.integrations ?? []).map((integration) => (
-              <article key={String(integration.key)} className="rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+              <article key={String(integration.key)} className="rounded-[8px] border border-[#EEF1FA] bg-[#FCFDFF] p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-[#13265C]">{String(integration.name)}</p>
+                    <p className="text-[13px] font-semibold text-[#13265C]">{String(integration.name)}</p>
                     <p className="mt-1 text-[12px] text-[#596498]">{titleCase(integration.type)}</p>
                   </div>
                   {integration.connected ? (
@@ -472,27 +489,13 @@ export function LeadsPage({
                     <button type="button" onClick={() => handleCreateIntegration(integration)} className="rounded-[8px] bg-[#13265C] px-3 py-2 text-[12px] font-semibold text-white">Connect</button>
                   )}
                 </div>
-                <p className="mt-3 text-[12px] text-[#596498]">Webhook: /api/v1/leads/webhook/&lt;org&gt;/{String(integration.key)}?token=...</p>
+                <p className="mt-2 truncate text-[11px] text-[#596498]">/leads/webhook/&lt;org&gt;/{String(integration.key)}</p>
               </article>
             ))}
+            </div>
           </div>
         </Section>
       </section>
-
-      <Section title="Upcoming Follow-ups">
-        <DataTable
-          emptyText="No followups scheduled."
-          rows={(data?.followups ?? []) as RecordItem[]}
-          columns={[
-            { key: 'lead', label: 'Lead' },
-            { key: 'type', label: 'Type' },
-            { key: 'title', label: 'Title' },
-            { key: 'assignedTo', label: 'Owner' },
-            { key: 'status', label: 'Status' },
-            { key: 'dueAt', label: 'Due', render: (row) => row.dueAt ? new Date(String(row.dueAt)).toLocaleString() : 'Not set' },
-          ]}
-        />
-      </Section>
     </PageShell>
   )
 }
