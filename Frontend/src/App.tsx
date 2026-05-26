@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Dashboard } from './components/dashboard/Dashboard'
 import { Login } from './components/auth/Login'
-import { getMe, logout, type UserProfile } from './lib/authApi'
+import { getMe, logout, refreshSession, type UserProfile } from './lib/authApi'
 import {
   clearAuthTokens,
   readAnyStoredAccessToken,
   readAnyStoredRefreshToken,
+  replaceStoredAuthTokens,
 } from './lib/authStorage'
 
 function App() {
@@ -14,20 +15,50 @@ function App() {
 
   useEffect(() => {
     const accessToken = readAnyStoredAccessToken()
+    const refreshToken = readAnyStoredRefreshToken()
 
-    if (!accessToken) {
+    if (!accessToken && !refreshToken) {
       setIsRestoringSession(false)
       return
     }
 
-    getMe(accessToken)
-      .then(setUser)
+    const restore = async () => {
+      if (accessToken) {
+        try {
+          const profile = await getMe(accessToken)
+          setUser(profile)
+          return
+        } catch {
+          // Try refresh below.
+        }
+      }
+
+      if (!refreshToken) {
+        clearAuthTokens()
+        return
+      }
+
+      const tokens = await refreshSession(refreshToken)
+      replaceStoredAuthTokens(tokens.access_token, tokens.refresh_token)
+      setUser(tokens.user)
+    }
+
+    restore()
       .catch(() => {
         clearAuthTokens()
       })
       .finally(() => {
         setIsRestoringSession(false)
       })
+  }, [])
+
+  useEffect(() => {
+    const handleExpired = () => {
+      clearAuthTokens()
+      setUser(null)
+    }
+    window.addEventListener('realstate:session-expired', handleExpired)
+    return () => window.removeEventListener('realstate:session-expired', handleExpired)
   }, [])
 
   const handleLogout = async () => {
