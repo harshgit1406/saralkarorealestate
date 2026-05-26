@@ -113,6 +113,15 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
   const [selectedEntityId, setSelectedEntityId] = useState<number | null>(null)
   const [isTableView, setIsTableView] = useState(false)
   const [isInfoOpen, setIsInfoOpen] = useState(true)
+  const [tableEditId, setTableEditId] = useState<number | null>(null)
+  const [tableDraft, setTableDraft] = useState({
+    name: '',
+    status: 'available',
+    area: '',
+    price: '',
+    facing: '',
+    note: '',
+  })
   const [activeInfoTab, setActiveInfoTab] = useState<'overview' | 'parties' | 'sale' | 'payments'>('overview')
   const [isEditingDetails, setIsEditingDetails] = useState(false)
   const [addingParentId, setAddingParentId] = useState<number | null>(null)
@@ -232,19 +241,53 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
     }
   }
 
-  const openEntityFromTable = (unit: InventoryRecord) => {
-    const linkedElement = mapElements.find((element) => element.inventory_entity_id === unit.id)
-    if (linkedElement?.element_id) {
-      setSelectedElementId(String(linkedElement.element_id))
+  const handleToggleTableView = () => {
+    setIsTableView((current) => {
+      const next = !current
+      if (next) {
+        setIsInfoOpen(false)
+        setTableEditId(null)
+      } else {
+        setIsInfoOpen(true)
+      }
+      return next
+    })
+  }
+
+  const startTableEdit = (item: InventoryRecord) => {
+    setTableEditId(toNumber(item.id))
+    setTableDraft({
+      name: String(item.name ?? ''),
+      status: String(item.status ?? 'available'),
+      area: String(item.area ?? ''),
+      price: String(item.price ?? ''),
+      facing: String(item.facing ?? ''),
+      note: String(item.displayNote ?? ''),
+    })
+  }
+
+  const saveTableEdit = async () => {
+    if (!tableEditId) return
+    setIsSaving(true)
+    try {
+      await updateInventoryEntity(tableEditId, {
+        name: tableDraft.name.trim(),
+        inventory_status: tableDraft.status,
+        dimensions: { saleable_area: Number(tableDraft.area || 0) },
+        pricing: { final_price: Number(tableDraft.price || 0), currency: 'INR' },
+        details: {
+          facing: tableDraft.facing.trim() || undefined,
+          display_note: tableDraft.note.trim() || undefined,
+        },
+      })
+      setTableEditId(null)
+      setActionMessage('Inventory row saved.')
+      onRefresh?.()
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'Could not save row.')
+    } finally {
+      setIsSaving(false)
     }
-    setSelectedEntityId(toNumber(unit.id))
-    setEditName(String(unit.name ?? ''))
-    setEditArea(String(unit.area ?? ''))
-    setEditPrice(String(unit.price ?? ''))
-    setEditFacing(String(unit.facing ?? ''))
-    setEditNote(String(unit.displayNote ?? ''))
-    setActiveInfoTab('overview')
-    setIsTableView(false)
   }
 
   const startAddChild = (parent: InventoryRecord) => {
@@ -540,35 +583,110 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
       const children = childrenByParentId.get(itemId) ?? []
       const canAddChild = ['plot', 'floor'].includes(String(item.type))
       const isAdding = addingParentId === itemId
+      const isEditing = tableEditId === itemId
       const rows: ReactNode[] = [
         <tr key={`row-${itemId}`} className="text-[#13265C]">
           <td className="px-4 py-3" style={{ paddingLeft: `${16 + level * 28}px` }}>
             <div className="flex items-center gap-2">
               {level > 0 ? <span className="h-px w-4 bg-[#C9D2EA]" /> : null}
               <div>
-                <span className="block font-semibold">{String(item.name)}</span>
+                {isEditing ? (
+                  <input
+                    value={tableDraft.name}
+                    onChange={(event) => setTableDraft((current) => ({ ...current, name: event.target.value }))}
+                    className="w-full rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] font-semibold outline-none"
+                  />
+                ) : (
+                  <span className="block font-semibold">{String(item.name)}</span>
+                )}
                 <span className="text-[12px] text-[#7A84AB]">{String(item.code)}</span>
               </div>
             </div>
           </td>
           <td className="px-4 py-3">{titleCase(item.type)}</td>
           <td className="px-4 py-3">
-            <span className="inline-flex items-center gap-2 rounded-full bg-[#F7F8FE] px-3 py-1 text-[12px] font-semibold">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor(item.status) }} />
-              {titleCase(item.status)}
-            </span>
+            {isEditing ? (
+              <select
+                value={tableDraft.status}
+                onChange={(event) => setTableDraft((current) => ({ ...current, status: event.target.value }))}
+                className="rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] outline-none"
+              >
+                {['available', 'hold', 'booked', 'sold', 'blocked', 'reserved', 'inactive'].map((status) => (
+                  <option key={status} value={status}>{titleCase(status)}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#F7F8FE] px-3 py-1 text-[12px] font-semibold">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColor(item.status) }} />
+                {titleCase(item.status)}
+              </span>
+            )}
           </td>
-          <td className="px-4 py-3">{String(item.area ?? 0)}</td>
-          <td className="px-4 py-3">{formatCurrency(item.price)}</td>
+          <td className="px-4 py-3">
+            {isEditing ? (
+              <input
+                value={tableDraft.area}
+                onChange={(event) => setTableDraft((current) => ({ ...current, area: event.target.value }))}
+                className="w-24 rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] outline-none"
+              />
+            ) : String(item.area ?? 0)}
+          </td>
+          <td className="px-4 py-3">
+            {isEditing ? (
+              <input
+                value={tableDraft.price}
+                onChange={(event) => setTableDraft((current) => ({ ...current, price: event.target.value }))}
+                className="w-32 rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] outline-none"
+              />
+            ) : formatCurrency(item.price)}
+          </td>
+          <td className="px-4 py-3">
+            {isEditing ? (
+              <input
+                value={tableDraft.facing}
+                onChange={(event) => setTableDraft((current) => ({ ...current, facing: event.target.value }))}
+                className="w-28 rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] outline-none"
+              />
+            ) : String(item.facing ?? '')}
+          </td>
+          <td className="px-4 py-3">
+            {isEditing ? (
+              <input
+                value={tableDraft.note}
+                onChange={(event) => setTableDraft((current) => ({ ...current, note: event.target.value }))}
+                className="w-40 rounded-[8px] border border-[#E3E8F6] px-3 py-2 text-[13px] outline-none"
+              />
+            ) : String(item.displayNote ?? '')}
+          </td>
           <td className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => openEntityFromTable(item)}
-                className="rounded-[8px] bg-[#F5F7FF] px-3 py-1 font-semibold"
-              >
-                Open / Edit
-              </button>
+              {isEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={saveTableEdit}
+                    disabled={isSaving}
+                    className="rounded-[8px] bg-[#13265C] px-3 py-1 font-semibold text-white disabled:opacity-60"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTableEditId(null)}
+                    className="rounded-[8px] bg-[#F5F7FF] px-3 py-1 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startTableEdit(item)}
+                  className="rounded-[8px] bg-[#F5F7FF] px-3 py-1 font-semibold"
+                >
+                  Edit
+                </button>
+              )}
               {canAddChild ? (
                 <button
                   type="button"
@@ -586,7 +704,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
       if (isAdding) {
         rows.push(
           <tr key={`add-${itemId}`} className="bg-[#FFFDFC]">
-            <td colSpan={6} className="px-4 py-3" style={{ paddingLeft: `${36 + level * 28}px` }}>
+            <td colSpan={8} className="px-4 py-3" style={{ paddingLeft: `${36 + level * 28}px` }}>
               <div className="grid gap-3 rounded-[10px] border border-[#F1C3AA] bg-white p-3 lg:grid-cols-[minmax(0,1fr)_150px_110px_90px]">
                 <input
                   value={childName}
@@ -633,23 +751,23 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
     <div className="h-full w-full overflow-hidden bg-[#E9EEF8]">
       <div
         className={`grid h-full gap-0 overflow-hidden border-t border-[#F1C3AA] bg-white/40 ${
-          isInfoOpen ? 'grid-cols-[minmax(0,1fr)_minmax(320px,400px)]' : 'grid-cols-1'
+          isInfoOpen && !isTableView ? 'grid-cols-[minmax(0,1fr)_minmax(320px,400px)]' : 'grid-cols-1'
         }`}
       >
         <section className="relative h-full min-h-0 overflow-hidden bg-[#F3F7FF] p-4 sm:p-5 lg:p-6">
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => setIsTableView((current) => !current)}
+              onClick={handleToggleTableView}
               disabled={isSaving}
-              title="Inventory table view"
+              title={isTableView ? 'Back to map view' : 'Inventory table view'}
               className="flex h-14 w-14 items-center justify-center rounded-full bg-[#B85412] text-white shadow-[0_16px_30px_rgba(184,84,18,0.28)] disabled:opacity-60"
             >
-              <Box className="h-6 w-6" strokeWidth={2} />
+              {isTableView ? <MapPinned className="h-6 w-6" strokeWidth={2} /> : <Box className="h-6 w-6" strokeWidth={2} />}
             </button>
           </div>
 
-          {!isInfoOpen ? (
+          {!isInfoOpen && !isTableView ? (
             <button
               type="button"
               onClick={() => setIsInfoOpen(true)}
@@ -695,7 +813,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                 <table className="w-full min-w-[860px] border-collapse text-left text-[13px]">
                   <thead className="sticky top-0 bg-[#F5F7FF] text-[#596498]">
                     <tr>
-                      {['Property', 'Type', 'Status', 'Area', 'Price', 'Action'].map((head) => (
+                      {['Property', 'Type', 'Status', 'Area', 'Price', 'Facing', 'Note', 'Action'].map((head) => (
                         <th key={head} className="px-4 py-3 font-semibold">{head}</th>
                       ))}
                     </tr>
@@ -705,7 +823,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                       renderInventoryRows(rootPlots)
                     ) : (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-[#596498]">
+                        <td colSpan={8} className="px-4 py-10 text-center text-[#596498]">
                           No map plots found. Upload or update the SVG map to create plots first.
                         </td>
                       </tr>
@@ -735,7 +853,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
               <button type="button" className="text-[#13265C]"><ZoomIn className="h-5 w-5" strokeWidth={2} /></button>
               <button type="button" className="text-[#13265C]"><Search className="h-5 w-5" strokeWidth={2} /></button>
               <div className="h-6 w-px bg-[#EBC2AE]" />
-              <button type="button" onClick={() => setIsTableView(true)} className="text-[#13265C]"><SquareStack className="h-5 w-5" strokeWidth={2} /></button>
+              <button type="button" onClick={handleToggleTableView} className="text-[#13265C]">{isTableView ? <MapPinned className="h-5 w-5" strokeWidth={2} /> : <SquareStack className="h-5 w-5" strokeWidth={2} />}</button>
               <button type="button" className="text-[#13265C]"><Minus className="h-5 w-5" strokeWidth={2} /></button>
               <div className="h-6 w-px bg-[#EBC2AE]" />
               <button type="button" onClick={() => setIsTableView(false)} className="text-[#13265C]"><ScanSearch className="h-5 w-5" strokeWidth={2} /></button>
@@ -744,7 +862,7 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
           </div>
         </section>
 
-        {isInfoOpen ? (
+        {isInfoOpen && !isTableView ? (
         <aside className="h-full min-h-0 overflow-y-auto border-l border-[#EEF1FA] bg-white px-6 py-6">
           <div className="mb-4 flex justify-end">
             <button
