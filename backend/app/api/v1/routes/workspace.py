@@ -567,6 +567,28 @@ async def fetch_leads(connection: asyncpg.Connection, organization_id: int) -> d
 
 
 async def fetch_customers(connection: asyncpg.Connection, organization_id: int) -> dict:
+    summary = await connection.fetchrow(
+        """
+        SELECT
+            COUNT(*) AS total_customers,
+            COUNT(*) FILTER (WHERE kyc_status = 'verified') AS verified_customers,
+            COUNT(*) FILTER (WHERE kyc_status = 'pending') AS pending_customers,
+            COUNT(*) FILTER (WHERE kyc_status = 'rejected') AS rejected_customers,
+            (
+                SELECT COUNT(DISTINCT customer_id)
+                FROM booking_applicants
+                WHERE organization_id = $1 AND applicant_role = 'co_applicant'
+            ) AS co_applicants,
+            (
+                SELECT COUNT(DISTINCT customer_id)
+                FROM booking_applicants
+                WHERE organization_id = $1
+            ) AS booked_customers
+        FROM customers
+        WHERE organization_id = $1
+        """,
+        organization_id,
+    )
     rows = await connection.fetch(
         """
         SELECT
@@ -575,21 +597,81 @@ async def fetch_customers(connection: asyncpg.Connection, organization_id: int) 
             c.full_name,
             c.phone,
             c.email,
+            c.pan_no,
+            c.aadhaar_no,
+            c.address,
             c.kyc_status,
-            b.booking_code,
-            b.booking_status,
-            ie.entity_code AS unit_code
+            COUNT(DISTINCT ba.booking_id) AS booking_count,
+            COALESCE(SUM(b.booking_amount), 0) AS booking_value,
+            MAX(b.booking_code) FILTER (WHERE ba.is_primary = TRUE) AS booking_code,
+            MAX(b.booking_status) FILTER (WHERE ba.is_primary = TRUE) AS booking_status,
+            MAX(ie.entity_code) FILTER (WHERE ba.is_primary = TRUE) AS unit_code,
+            MAX(ba.applicant_role) AS applicant_role
         FROM customers c
-        LEFT JOIN booking_applicants ba ON ba.customer_id = c.id AND ba.is_primary = TRUE
+        LEFT JOIN booking_applicants ba ON ba.customer_id = c.id
         LEFT JOIN bookings b ON b.id = ba.booking_id
         LEFT JOIN inventory_entities ie ON ie.id = b.inventory_entity_id
         WHERE c.organization_id = $1
+        GROUP BY c.id
         ORDER BY c.created_at DESC
-        LIMIT 20
+        LIMIT 40
+        """,
+        organization_id,
+    )
+    applicants = await connection.fetch(
+        """
+        SELECT
+            ba.id,
+            ba.applicant_role,
+            ba.ownership_percentage,
+            ba.is_primary,
+            c.full_name,
+            c.phone,
+            c.email,
+            c.kyc_status,
+            b.booking_code,
+            b.booking_status,
+            b.booking_amount,
+            ie.entity_code AS unit_code
+        FROM booking_applicants ba
+        JOIN customers c ON c.id = ba.customer_id
+        JOIN bookings b ON b.id = ba.booking_id
+        JOIN inventory_entities ie ON ie.id = b.inventory_entity_id
+        WHERE ba.organization_id = $1
+        ORDER BY b.created_at DESC, ba.is_primary DESC, ba.applicant_role
+        LIMIT 50
+        """,
+        organization_id,
+    )
+    brokers = await connection.fetch(
+        """
+        SELECT
+            br.id,
+            br.broker_code,
+            br.full_name,
+            br.company_name,
+            br.phone,
+            br.kyc_status,
+            COUNT(bb.id) AS deal_count,
+            COALESCE(SUM(bb.commission_amount), 0) AS commission_value
+        FROM brokers br
+        LEFT JOIN booking_brokers bb ON bb.broker_id = br.id
+        WHERE br.organization_id = $1
+        GROUP BY br.id
+        ORDER BY deal_count DESC, br.full_name
+        LIMIT 12
         """,
         organization_id,
     )
     return {
+        "summary": {
+            "total": summary["total_customers"],
+            "verified": summary["verified_customers"],
+            "pending": summary["pending_customers"],
+            "rejected": summary["rejected_customers"],
+            "coApplicants": summary["co_applicants"],
+            "bookedCustomers": summary["booked_customers"],
+        },
         "items": [
             {
                 "id": row["id"],
@@ -597,12 +679,48 @@ async def fetch_customers(connection: asyncpg.Connection, organization_id: int) 
                 "name": row["full_name"],
                 "phone": row["phone"],
                 "email": row["email"],
+                "panNo": row["pan_no"],
+                "aadhaarNo": row["aadhaar_no"],
+                "address": row["address"],
                 "kycStatus": row["kyc_status"],
                 "bookingCode": row["booking_code"],
                 "bookingStatus": row["booking_status"],
                 "unitCode": row["unit_code"],
+                "applicantRole": row["applicant_role"],
+                "bookingCount": row["booking_count"],
+                "bookingValue": money(row["booking_value"]),
             }
             for row in rows
+        ],
+        "applicants": [
+            {
+                "id": row["id"],
+                "role": row["applicant_role"],
+                "ownership": money(row["ownership_percentage"]),
+                "isPrimary": row["is_primary"],
+                "name": row["full_name"],
+                "phone": row["phone"],
+                "email": row["email"],
+                "kycStatus": row["kyc_status"],
+                "bookingCode": row["booking_code"],
+                "bookingStatus": row["booking_status"],
+                "bookingAmount": money(row["booking_amount"]),
+                "unitCode": row["unit_code"],
+            }
+            for row in applicants
+        ],
+        "brokers": [
+            {
+                "id": row["id"],
+                "code": row["broker_code"],
+                "name": row["full_name"],
+                "company": row["company_name"],
+                "phone": row["phone"],
+                "kycStatus": row["kyc_status"],
+                "dealCount": row["deal_count"],
+                "commissionValue": money(row["commission_value"]),
+            }
+            for row in brokers
         ],
     }
 
@@ -674,6 +792,72 @@ async def fetch_finance(connection: asyncpg.Connection, organization_id: int) ->
         """,
         organization_id,
     )
+    stages = await connection.fetch(
+        """
+        SELECT
+            bs.id,
+            bs.stage_name,
+            bs.stage_status,
+            bs.stage_type,
+            bs.requires_payment,
+            bs.amount,
+            bs.paid_amount,
+            bs.remaining_amount,
+            bs.due_date,
+            b.booking_code,
+            c.full_name AS customer_name,
+            ie.entity_code AS unit_code
+        FROM booking_stages bs
+        JOIN bookings b ON b.id = bs.booking_id
+        JOIN inventory_entities ie ON ie.id = b.inventory_entity_id
+        LEFT JOIN booking_applicants ba ON ba.booking_id = b.id AND ba.is_primary = TRUE
+        LEFT JOIN customers c ON c.id = ba.customer_id
+        WHERE bs.organization_id = $1
+        ORDER BY bs.due_date NULLS LAST, bs.sequence_no
+        LIMIT 40
+        """,
+        organization_id,
+    )
+    collection_modes = await connection.fetch(
+        """
+        SELECT payment_mode, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS count
+        FROM payments
+        WHERE organization_id = $1 AND payment_status = 'completed'
+        GROUP BY payment_mode
+        ORDER BY amount DESC
+        """,
+        organization_id,
+    )
+    payment_status = await connection.fetch(
+        """
+        SELECT payment_status, COUNT(*) AS count, COALESCE(SUM(amount), 0) AS amount
+        FROM payments
+        WHERE organization_id = $1
+        GROUP BY payment_status
+        ORDER BY count DESC
+        """,
+        organization_id,
+    )
+    booking_status = await connection.fetch(
+        """
+        SELECT booking_status, COUNT(*) AS count, COALESCE(SUM(booking_amount), 0) AS amount
+        FROM bookings
+        WHERE organization_id = $1
+        GROUP BY booking_status
+        ORDER BY count DESC
+        """,
+        organization_id,
+    )
+    customers = await connection.fetch(
+        """
+        SELECT id, customer_code, full_name, phone, kyc_status
+        FROM customers
+        WHERE organization_id = $1
+        ORDER BY full_name
+        LIMIT 100
+        """,
+        organization_id,
+    )
     return {
         "summary": {
             "demand": money(summary["demand"]),
@@ -716,6 +900,57 @@ async def fetch_finance(connection: asyncpg.Connection, organization_id: int) ->
             }
             for row in bookings
         ],
+        "stages": [
+            {
+                "id": row["id"],
+                "stage": row["stage_name"],
+                "status": row["stage_status"],
+                "type": row["stage_type"],
+                "requiresPayment": row["requires_payment"],
+                "amount": money(row["amount"]),
+                "paid": money(row["paid_amount"]),
+                "remaining": money(row["remaining_amount"]),
+                "dueAt": row["due_date"],
+                "bookingCode": row["booking_code"],
+                "customer": row["customer_name"],
+                "unitCode": row["unit_code"],
+            }
+            for row in stages
+        ],
+        "collectionModes": [
+            {
+                "mode": row["payment_mode"],
+                "amount": money(row["amount"]),
+                "count": row["count"],
+            }
+            for row in collection_modes
+        ],
+        "paymentStatus": [
+            {
+                "status": row["payment_status"],
+                "amount": money(row["amount"]),
+                "count": row["count"],
+            }
+            for row in payment_status
+        ],
+        "bookingStatus": [
+            {
+                "status": row["booking_status"],
+                "amount": money(row["amount"]),
+                "count": row["count"],
+            }
+            for row in booking_status
+        ],
+        "customers": [
+            {
+                "id": row["id"],
+                "code": row["customer_code"],
+                "name": row["full_name"],
+                "phone": row["phone"],
+                "kycStatus": row["kyc_status"],
+            }
+            for row in customers
+        ],
     }
 
 
@@ -731,6 +966,7 @@ async def fetch_hrms(connection: asyncpg.Connection, organization_id: int) -> di
             u.email,
             u.phone,
             u.is_active,
+            u.is_super_admin,
             u.last_login_at,
             COALESCE(string_agg(r.name, ', ' ORDER BY r.name), 'No role') AS roles
         FROM users u
@@ -777,7 +1013,45 @@ async def fetch_hrms(connection: asyncpg.Connection, organization_id: int) -> di
     permissions = await connection.fetch(
         "SELECT id, permission_key, module, description FROM permissions ORDER BY module, permission_key"
     )
+    role_coverage = await connection.fetch(
+        """
+        SELECT r.id, r.name, COUNT(ur.user_id) AS users_count, r.is_system
+        FROM roles r
+        LEFT JOIN user_roles ur ON ur.role_id = r.id
+        WHERE r.organization_id = $1
+        GROUP BY r.id
+        ORDER BY users_count DESC, r.name
+        """,
+        organization_id,
+    )
+    attendance_summary = await connection.fetch(
+        """
+        SELECT status, COUNT(*) AS count
+        FROM attendance_records
+        WHERE organization_id = $1
+          AND attendance_date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY status
+        ORDER BY count DESC
+        """,
+        organization_id,
+    )
+    active_sessions = await connection.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM auth_sessions
+        WHERE organization_id = $1 AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+        """,
+        organization_id,
+    )
     return {
+        "summary": {
+            "users": len(users),
+            "activeUsers": sum(1 for row in users if row["is_active"]),
+            "inactiveUsers": sum(1 for row in users if not row["is_active"]),
+            "roles": len(roles),
+            "permissions": len(permissions),
+            "activeSessions": active_sessions,
+        },
         "users": [
             {
                 "id": row["id"],
@@ -786,6 +1060,7 @@ async def fetch_hrms(connection: asyncpg.Connection, organization_id: int) -> di
                 "email": row["email"],
                 "phone": row["phone"],
                 "active": row["is_active"],
+                "superAdmin": row["is_super_admin"],
                 "roles": row["roles"],
                 "lastLoginAt": row["last_login_at"],
             }
@@ -803,6 +1078,8 @@ async def fetch_hrms(connection: asyncpg.Connection, organization_id: int) -> di
         ],
         "roles": [dict(row) for row in roles],
         "permissions": [dict(row) for row in permissions],
+        "roleCoverage": [dict(row) for row in role_coverage],
+        "attendanceSummary": [dict(row) for row in attendance_summary],
     }
 
 

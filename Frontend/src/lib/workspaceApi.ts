@@ -34,18 +34,31 @@ export type WorkspacePages = {
     followups?: Array<Record<string, string | number | null>>
     activities?: Array<Record<string, string | number | null>>
   }
-  customer: { items: Array<Record<string, string | number | boolean | null>> }
+  customer: {
+    summary?: Record<string, number>
+    items: Array<Record<string, unknown>>
+    applicants?: Array<Record<string, unknown>>
+    brokers?: Array<Record<string, unknown>>
+  }
   finance: {
     summary: Record<string, number>
-    plans: Array<Record<string, string | number>>
-    payments: Array<Record<string, string | number | null>>
-    bookings: Array<Record<string, string | number | null>>
+    plans: Array<Record<string, unknown>>
+    payments: Array<Record<string, unknown>>
+    bookings: Array<Record<string, unknown>>
+    stages?: Array<Record<string, unknown>>
+    collectionModes?: Array<Record<string, unknown>>
+    paymentStatus?: Array<Record<string, unknown>>
+    bookingStatus?: Array<Record<string, unknown>>
+    customers?: Array<Record<string, unknown>>
   }
   hrms: {
-    users: Array<Record<string, string | number | boolean | null>>
-    attendance: Array<Record<string, string | null>>
-    roles?: Array<Record<string, string | number | boolean | string[] | null>>
-    permissions?: Array<Record<string, string | number | null>>
+    summary?: Record<string, number>
+    users: Array<Record<string, unknown>>
+    attendance: Array<Record<string, unknown>>
+    roles?: Array<Record<string, unknown>>
+    permissions?: Array<Record<string, unknown>>
+    roleCoverage?: Array<Record<string, unknown>>
+    attendanceSummary?: Array<Record<string, unknown>>
   }
   communication: {
     calls: Array<Record<string, string | null>>
@@ -250,6 +263,27 @@ export function createRole(payload: ApiRecord) {
   return apiRequest<ApiRecord>('/hrms/roles', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export function createHrmsUser(payload: ApiRecord) {
+  return apiRequest<ApiRecord>('/hrms/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateHrmsUser(userId: number, payload: ApiRecord) {
+  return apiRequest<ApiRecord>(`/hrms/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function replaceUserRoles(userId: number, roleIds: number[]) {
+  return apiRequest<ApiRecord>(`/hrms/users/${userId}/roles`, {
+    method: 'PUT',
+    body: JSON.stringify({ role_ids: roleIds }),
   })
 }
 
