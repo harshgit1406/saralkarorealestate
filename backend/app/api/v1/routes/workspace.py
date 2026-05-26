@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 
 import asyncpg
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import get_current_user, get_db_pool
 from app.api.v1.crud import ensure_permission
@@ -37,7 +37,11 @@ async def fetch_metrics(connection: asyncpg.Connection, organization_id: int) ->
     }
 
 
-async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) -> dict:
+async def fetch_inventory(
+    connection: asyncpg.Connection,
+    organization_id: int,
+    requested_project_id: int | None = None,
+) -> dict:
     projects = await connection.fetch(
         """
         SELECT id, name, project_code, project_type, location, status
@@ -47,7 +51,9 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
         """,
         organization_id,
     )
-    selected_project_id = projects[0]["id"] if projects else None
+    project_ids = {row["id"] for row in projects}
+    selected_project_id = requested_project_id if requested_project_id in project_ids else None
+    selected_project_id = selected_project_id or (projects[0]["id"] if projects else None)
     project_map = None
     map_elements = []
     floors = []
@@ -99,11 +105,36 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
                 child.path,
                 parent.entity_code AS parent_code,
                 dim.saleable_area AS area,
-                pr.final_price AS price
+                pr.final_price AS price,
+                det.facing,
+                det.display_note,
+                det.notes
+                ,
+                (
+                    SELECT row_to_json(bdata)
+                    FROM (
+                        SELECT
+                            b.id,
+                            b.booking_code,
+                            b.booking_status,
+                            b.booking_amount,
+                            c.id AS customer_id,
+                            c.full_name AS customer_name,
+                            c.phone AS customer_phone
+                        FROM bookings b
+                        LEFT JOIN booking_applicants ba ON ba.booking_id = b.id AND ba.is_primary = TRUE
+                        LEFT JOIN customers c ON c.id = ba.customer_id
+                        WHERE b.inventory_entity_id = child.id
+                          AND b.booking_status IN ('reserved', 'confirmed')
+                        ORDER BY b.created_at DESC
+                        LIMIT 1
+                    ) bdata
+                ) AS active_booking
             FROM inventory_entities child
             JOIN inventory_entities parent ON parent.id = child.parent_id
             LEFT JOIN inventory_dimensions dim ON dim.inventory_entity_id = child.id
             LEFT JOIN inventory_pricing pr ON pr.inventory_entity_id = child.id
+            LEFT JOIN inventory_details det ON det.inventory_entity_id = child.id
             WHERE child.organization_id = $1
               AND child.project_id = $2
               AND child.entity_type = 'floor'
@@ -118,9 +149,11 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
         FROM inventory_entities
         WHERE organization_id = $1
           AND entity_type IN ('flat', 'plot', 'villa', 'shop', 'office')
+          AND ($2::int IS NULL OR project_id = $2)
         GROUP BY inventory_status
         """,
         organization_id,
+        selected_project_id,
     )
     units = await connection.fetch(
         """
@@ -136,22 +169,78 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
                 p.name AS project_name,
                 dim.saleable_area,
             d.bhk_type,
+            d.facing,
+            d.display_note,
+            d.notes,
             pr.final_price,
-            pr.price_per_sqft
+                pr.price_per_sqft
+                ,
+                (
+                    SELECT row_to_json(bdata)
+                    FROM (
+                        SELECT
+                            b.id,
+                            b.booking_code,
+                            b.booking_status,
+                            b.booking_amount,
+                            c.id AS customer_id,
+                            c.full_name AS customer_name,
+                            c.phone AS customer_phone
+                        FROM bookings b
+                        LEFT JOIN booking_applicants ba ON ba.booking_id = b.id AND ba.is_primary = TRUE
+                        LEFT JOIN customers c ON c.id = ba.customer_id
+                        WHERE b.inventory_entity_id = ie.id
+                          AND b.booking_status IN ('reserved', 'confirmed')
+                        ORDER BY b.created_at DESC
+                        LIMIT 1
+                    ) bdata
+                ) AS active_booking
         FROM inventory_entities ie
         JOIN projects p ON p.id = ie.project_id
         LEFT JOIN inventory_dimensions dim ON dim.inventory_entity_id = ie.id
         LEFT JOIN inventory_pricing pr ON pr.inventory_entity_id = ie.id
         LEFT JOIN inventory_details d ON d.inventory_entity_id = ie.id
         WHERE ie.organization_id = $1
+          AND ($2::int IS NULL OR ie.project_id = $2)
           AND ie.entity_type IN ('flat', 'plot', 'villa', 'shop', 'office')
         ORDER BY p.created_at DESC, p.name, ie.sort_order, ie.entity_code
         LIMIT 200
         """,
         organization_id,
+        selected_project_id,
+    )
+    payment_plans = await connection.fetch(
+        """
+        SELECT id, name, plan_type
+        FROM payment_plans
+        WHERE organization_id = $1
+        ORDER BY name
+        """,
+        organization_id,
+    )
+    customers = await connection.fetch(
+        """
+        SELECT id, customer_code, full_name, phone, email, kyc_status
+        FROM customers
+        WHERE organization_id = $1
+        ORDER BY created_at DESC
+        LIMIT 100
+        """,
+        organization_id,
+    )
+    brokers = await connection.fetch(
+        """
+        SELECT id, broker_code, full_name, company_name, phone, email, kyc_status
+        FROM brokers
+        WHERE organization_id = $1
+        ORDER BY created_at DESC
+        LIMIT 100
+        """,
+        organization_id,
     )
     return {
         "counts": {row["inventory_status"]: row["total"] for row in status_rows},
+        "selectedProjectId": selected_project_id,
         "projects": [dict(row) for row in projects],
         "map": {
             **dict(project_map),
@@ -174,6 +263,12 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
                 "path": row["path"],
                 "area": money(row["area"]),
                 "price": money(row["price"]),
+                "facing": row["facing"],
+                "displayNote": row["display_note"],
+                "notes": row["notes"],
+                "activeBooking": json.loads(row["active_booking"])
+                if isinstance(row["active_booking"], str)
+                else row["active_booking"],
             }
             for row in floors
         ],
@@ -192,16 +287,25 @@ async def fetch_inventory(connection: asyncpg.Connection, organization_id: int) 
                 "bhk": row["bhk_type"],
                 "price": money(row["final_price"]),
                 "pricePerSqft": money(row["price_per_sqft"]),
+                "facing": row["facing"],
+                "displayNote": row["display_note"],
+                "notes": row["notes"],
+                "activeBooking": json.loads(row["active_booking"])
+                if isinstance(row["active_booking"], str)
+                else row["active_booking"],
             }
             for row in units
         ],
+        "paymentPlans": [dict(row) for row in payment_plans],
+        "customers": [dict(row) for row in customers],
+        "brokers": [dict(row) for row in brokers],
     }
 
 
 async def fetch_leads(connection: asyncpg.Connection, organization_id: int) -> dict:
     lead_sources = await connection.fetch(
         """
-        SELECT id, source_name, source_key, source_type, is_active
+        SELECT id, source_name, source_key, source_type, is_active, config
         FROM lead_sources
         WHERE organization_id = $1
         ORDER BY source_name
@@ -233,39 +337,229 @@ async def fetch_leads(connection: asyncpg.Connection, organization_id: int) -> d
             l.lead_code,
             l.name,
             l.phone,
+            l.alternate_phone,
+            l.email,
+            l.source,
             l.status,
             l.priority,
             l.budget_min,
             l.budget_max,
+            l.requirements,
             p.name AS project_name,
+            p.id AS project_id,
+            ls.source_name,
+            ls.source_key,
+            ls.source_type,
             u.full_name AS assigned_to,
+            u.id AS assigned_to_id,
+            l.last_contacted_at,
+            l.created_at,
             l.next_follow_up_at
         FROM leads l
         LEFT JOIN projects p ON p.id = l.project_id
+        LEFT JOIN lead_sources ls ON ls.id = l.lead_source_id
         LEFT JOIN users u ON u.id = l.assigned_to
         WHERE l.organization_id = $1
         ORDER BY l.created_at DESC
-        LIMIT 20
+        LIMIT 100
         """,
         organization_id,
     )
+    status_counts = await connection.fetch(
+        """
+        SELECT status, COUNT(*) AS total
+        FROM leads
+        WHERE organization_id = $1
+        GROUP BY status
+        """,
+        organization_id,
+    )
+    priority_counts = await connection.fetch(
+        """
+        SELECT priority, COUNT(*) AS total
+        FROM leads
+        WHERE organization_id = $1
+        GROUP BY priority
+        """,
+        organization_id,
+    )
+    source_performance = await connection.fetch(
+        """
+        SELECT
+            COALESCE(ls.source_name, l.source, 'Manual') AS source_name,
+            COALESCE(ls.source_key, 'manual') AS source_key,
+            COALESCE(ls.source_type, 'manual') AS source_type,
+            COUNT(l.id) AS total,
+            COUNT(l.id) FILTER (WHERE l.status = 'won') AS won,
+            COUNT(l.id) FILTER (WHERE l.status = 'lost') AS lost,
+            COUNT(l.id) FILTER (WHERE l.status NOT IN ('won', 'lost', 'junk')) AS active,
+            COUNT(l.id) FILTER (
+                WHERE l.next_follow_up_at IS NOT NULL
+                  AND l.next_follow_up_at < CURRENT_TIMESTAMP
+                  AND l.status NOT IN ('won', 'lost', 'junk')
+            ) AS overdue,
+            COALESCE(AVG(l.budget_max), 0) AS avg_budget
+        FROM leads l
+        LEFT JOIN lead_sources ls ON ls.id = l.lead_source_id
+        WHERE l.organization_id = $1
+        GROUP BY COALESCE(ls.source_name, l.source, 'Manual'), COALESCE(ls.source_key, 'manual'), COALESCE(ls.source_type, 'manual')
+        ORDER BY total DESC, source_name
+        """,
+        organization_id,
+    )
+    followups = await connection.fetch(
+        """
+        SELECT
+            lf.id,
+            lf.lead_id,
+            l.name AS lead_name,
+            l.phone AS lead_phone,
+            lf.followup_type,
+            lf.status,
+            lf.title,
+            lf.notes,
+            lf.due_at,
+            u.full_name AS assigned_to
+        FROM lead_followups lf
+        JOIN leads l ON l.id = lf.lead_id
+        LEFT JOIN users u ON u.id = lf.assigned_to
+        WHERE lf.organization_id = $1
+        ORDER BY
+            CASE WHEN lf.status = 'pending' THEN 0 ELSE 1 END,
+            lf.due_at
+        LIMIT 30
+        """,
+        organization_id,
+    )
+    activities = await connection.fetch(
+        """
+        SELECT
+            la.id,
+            la.lead_id,
+            l.name AS lead_name,
+            la.activity_type,
+            la.notes,
+            la.created_at,
+            u.full_name AS created_by
+        FROM lead_activities la
+        JOIN leads l ON l.id = la.lead_id
+        LEFT JOIN users u ON u.id = la.created_by
+        WHERE la.organization_id = $1
+        ORDER BY la.created_at DESC
+        LIMIT 30
+        """,
+        organization_id,
+    )
+    call_summary = await connection.fetch(
+        """
+        SELECT lead_id, COUNT(*) AS total_calls, MAX(created_at) AS last_call_at
+        FROM call_sessions
+        WHERE organization_id = $1
+        GROUP BY lead_id
+        """,
+        organization_id,
+    )
+    calls_by_lead = {row["lead_id"]: row for row in call_summary}
+    default_platforms = [
+        {"name": "99acres", "key": "99acres", "type": "portal"},
+        {"name": "NoBroker", "key": "nobroker", "type": "portal"},
+        {"name": "MagicBricks", "key": "magicbricks", "type": "portal"},
+        {"name": "Housing", "key": "housing", "type": "portal"},
+        {"name": "Meta Ads", "key": "meta_ads", "type": "meta_ads"},
+        {"name": "Google Ads", "key": "google_ads", "type": "google_ads"},
+        {"name": "Website", "key": "website", "type": "website"},
+        {"name": "WhatsApp", "key": "whatsapp", "type": "whatsapp"},
+    ]
+    configured_keys = {row["source_key"] for row in lead_sources}
     return {
-        "sources": [dict(row) for row in lead_sources],
+        "sources": [
+            {
+                **dict(row),
+                "config": json.loads(row["config"]) if isinstance(row["config"], str) else row["config"],
+            }
+            for row in lead_sources
+        ],
         "users": [dict(row) for row in users],
         "projects": [dict(row) for row in projects],
+        "statusCounts": {row["status"]: row["total"] for row in status_counts},
+        "priorityCounts": {row["priority"]: row["total"] for row in priority_counts},
+        "sourcePerformance": [
+            {
+                "name": row["source_name"],
+                "key": row["source_key"],
+                "type": row["source_type"],
+                "total": row["total"],
+                "won": row["won"],
+                "lost": row["lost"],
+                "active": row["active"],
+                "overdue": row["overdue"],
+                "avgBudget": money(row["avg_budget"]),
+            }
+            for row in source_performance
+        ],
+        "integrations": [
+            {
+                "name": source["name"],
+                "key": source["key"],
+                "type": source["type"],
+                "connected": source["key"] in configured_keys,
+            }
+            for source in default_platforms
+        ],
+        "followups": [
+            {
+                "id": row["id"],
+                "leadId": row["lead_id"],
+                "lead": row["lead_name"],
+                "phone": row["lead_phone"],
+                "type": row["followup_type"],
+                "status": row["status"],
+                "title": row["title"],
+                "notes": row["notes"],
+                "dueAt": row["due_at"],
+                "assignedTo": row["assigned_to"],
+            }
+            for row in followups
+        ],
+        "activities": [
+            {
+                "id": row["id"],
+                "leadId": row["lead_id"],
+                "lead": row["lead_name"],
+                "type": row["activity_type"],
+                "notes": row["notes"],
+                "createdAt": row["created_at"],
+                "createdBy": row["created_by"],
+            }
+            for row in activities
+        ],
         "items": [
             {
                 "id": row["id"],
                 "code": row["lead_code"],
                 "name": row["name"],
                 "phone": row["phone"],
+                "alternatePhone": row["alternate_phone"],
+                "email": row["email"],
                 "status": row["status"],
                 "priority": row["priority"],
                 "budgetMin": money(row["budget_min"]),
                 "budgetMax": money(row["budget_max"]),
+                "requirements": json.loads(row["requirements"])
+                if isinstance(row["requirements"], str)
+                else row["requirements"],
                 "project": row["project_name"],
+                "projectId": row["project_id"],
+                "source": row["source_name"] or row["source"],
+                "sourceKey": row["source_key"],
+                "sourceType": row["source_type"],
                 "assignedTo": row["assigned_to"],
+                "assignedToId": row["assigned_to_id"],
+                "lastContactedAt": row["last_contacted_at"],
                 "nextFollowUpAt": row["next_follow_up_at"],
+                "createdAt": row["created_at"],
+                "totalCalls": calls_by_lead.get(row["id"], {}).get("total_calls", 0),
+                "lastCallAt": calls_by_lead.get(row["id"], {}).get("last_call_at"),
             }
             for row in rows
         ],
@@ -644,6 +938,7 @@ async def fetch_settings(connection: asyncpg.Connection, organization_id: int) -
 
 @router.get("/pages")
 async def get_workspace_pages(
+    project_id: int | None = Query(default=None),
     current_user: asyncpg.Record = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db_pool),
 ) -> dict:
@@ -654,7 +949,7 @@ async def get_workspace_pages(
         pages = {}
         page_fetchers = {
             "dashboard": ("dashboard.view", lambda: fetch_metrics(connection, organization_id)),
-            "inventory": ("inventory.view", lambda: fetch_inventory(connection, organization_id)),
+            "inventory": ("inventory.view", lambda: fetch_inventory(connection, organization_id, project_id)),
             "leads": ("leads.view", lambda: fetch_leads(connection, organization_id)),
             "customer": ("customers.view", lambda: fetch_customers(connection, organization_id)),
             "finance": ("finance.view", lambda: fetch_finance(connection, organization_id)),
