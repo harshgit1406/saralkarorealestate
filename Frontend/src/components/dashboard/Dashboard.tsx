@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Bell, CircleHelp, Plus, Search } from 'lucide-react'
 import { AppSidebar } from '../layout/AppSidebar'
@@ -54,21 +54,27 @@ export function Dashboard({ currentUserName, onLogout }: DashboardProps) {
   const [workspacePages, setWorkspacePages] = useState<WorkspacePages | null>(null)
   const [workspaceError, setWorkspaceError] = useState<string | null>(null)
   const [searchValue, setSearchValue] = useState('')
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
 
-  const refreshWorkspace = () => {
-    getWorkspacePages()
+  const refreshWorkspace = useCallback((projectId = selectedProjectId) => {
+    getWorkspacePages(projectId)
       .then((data) => {
         setWorkspacePages(data)
+        setSelectedProjectId(data.inventory?.selectedProjectId ?? projectId ?? null)
         setWorkspaceError(null)
       })
       .catch((error: Error) => {
+        if (error.message === 'Session expired') {
+          setWorkspaceError(null)
+          return
+        }
         setWorkspaceError(error.message)
       })
-  }
+  }, [selectedProjectId])
 
   useEffect(() => {
     refreshWorkspace()
-  }, [])
+  }, [refreshWorkspace])
 
   const mainContent = useMemo(() => {
     switch (activePage) {
@@ -84,7 +90,7 @@ export function Dashboard({ currentUserName, onLogout }: DashboardProps) {
           />
         )
       case 'inventory':
-        return <InventoryPage data={workspacePages?.inventory} onRefresh={refreshWorkspace} />
+        return <InventoryPage data={workspacePages?.inventory} onRefresh={() => refreshWorkspace()} />
       case 'leads':
         return <LeadsPage data={workspacePages?.leads} onRefresh={refreshWorkspace} />
       case 'customer':
@@ -115,7 +121,12 @@ export function Dashboard({ currentUserName, onLogout }: DashboardProps) {
           />
         )
     }
-  }, [activePage, currentUserName, workspacePages])
+  }, [activePage, currentUserName, refreshWorkspace, workspacePages])
+
+  const handleProjectSelect = (projectId: number) => {
+    setSelectedProjectId(projectId)
+    refreshWorkspace(projectId)
+  }
 
   const isInventoryPage = activePage === 'inventory'
   const userInitials = getInitials(currentUserName) || 'U'
@@ -181,12 +192,20 @@ export function Dashboard({ currentUserName, onLogout }: DashboardProps) {
           onMouseLeave={() => setSidebarOpen(false)}
         />
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <header className="border-b border-[#F1C3AA] bg-[#FCFBFF] px-4 py-3 sm:px-5 lg:px-7">
+        <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="sticky top-0 z-40 shrink-0 border-b border-[#F1C3AA] bg-[#FCFBFF] px-4 py-3 sm:px-5 lg:px-7">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3">
                 {isInventoryPage ? (
-                  <InventoryHeaderControl />
+                  <InventoryHeaderControl
+                    data={workspacePages?.inventory}
+                    selectedProjectId={selectedProjectId}
+                    onProjectSelect={handleProjectSelect}
+                    onProjectCreated={(projectId) => {
+                      setSelectedProjectId(projectId)
+                      refreshWorkspace(projectId)
+                    }}
+                  />
                 ) : (
                   <form
                     onSubmit={handleSearchSubmit}
@@ -245,12 +264,14 @@ export function Dashboard({ currentUserName, onLogout }: DashboardProps) {
           </header>
 
           <div
-            className={`flex-1 px-4 py-5 pb-28 sm:px-5 sm:pb-28 lg:px-7 lg:py-7 lg:pb-7 ${
-              isInventoryPage ? 'overflow-hidden' : ''
+            className={`min-h-0 flex-1 pb-28 sm:pb-28 lg:pb-7 ${
+              isInventoryPage
+                ? 'overflow-hidden px-0 py-0'
+                : 'overflow-y-auto px-4 py-5 sm:px-5 lg:px-7 lg:py-7'
             }`}
           >
             {workspaceError ? (
-              <div className="mx-auto mb-4 max-w-[1180px] rounded-[8px] border border-[#F1C3AA] bg-white px-4 py-3 text-[13px] font-medium text-[#B85412]">
+              <div className="mx-4 mb-4 mt-4 rounded-[8px] border border-[#F1C3AA] bg-white px-4 py-3 text-[13px] font-medium text-[#B85412] lg:mx-7">
                 {workspaceError}
               </div>
             ) : null}
