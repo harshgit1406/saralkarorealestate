@@ -499,9 +499,17 @@ export function LeadsPage({
                     <p className="mt-1 text-[12px] text-[#596498]">{titleCase(integration.type)}</p>
                   </div>
                   {integration.connected ? (
-                    <span className="rounded-full bg-[#EAFBF0] px-3 py-1 text-[12px] font-semibold text-[#136C2E]">Connected</span>
+                    <span className="rounded-[8px] bg-[#136C2E] px-3 py-2 text-[12px] font-semibold text-white">
+                      Ready
+                    </span>
                   ) : (
-                    <button type="button" onClick={() => handleCreateIntegration(integration)} className="rounded-[8px] bg-[#13265C] px-3 py-2 text-[12px] font-semibold text-white">Connect</button>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateIntegration(integration)}
+                      className="rounded-[8px] bg-[#B85412] px-3 py-2 text-[12px] font-semibold text-white"
+                    >
+                      Connect
+                    </button>
                   )}
                 </div>
                 <p className="mt-2 truncate text-[11px] text-[#596498]">/leads/webhook/&lt;org&gt;/{String(integration.key)}</p>
