@@ -73,6 +73,22 @@ export async function getMe(accessToken: string): Promise<UserProfile> {
   return response.json() as Promise<UserProfile>
 }
 
+export async function refreshSession(refreshToken: string): Promise<AuthTokens> {
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+
+  if (!response.ok) {
+    throw new Error('Session expired')
+  }
+
+  return response.json() as Promise<AuthTokens>
+}
+
 export async function logout(refreshToken: string): Promise<void> {
   await fetch(`${API_BASE_URL}/auth/logout`, {
     method: 'POST',
