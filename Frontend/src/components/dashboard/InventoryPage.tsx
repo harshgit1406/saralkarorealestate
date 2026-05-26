@@ -907,6 +907,50 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
                 </p>
               ) : null}
 
+              <section className="mt-5 rounded-[12px] border border-[#EEF1FA] bg-white p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[14px] font-semibold text-[#13265C]">
+                      {selectedFloors.length ? `Inventory under ${String(selectedPlot?.code)}` : 'Selected inventory'}
+                    </h3>
+                    <p className="mt-1 text-[12px] text-[#596498]">
+                      Actions below apply to the selected item.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#FFF7F1] px-3 py-1 text-[12px] font-semibold text-[#B85412]">
+                    {String(selectedEntity.code)}
+                  </span>
+                </div>
+                {selectedFloors.length ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {selectedFloors.map((floor) => (
+                      <button
+                        key={String(floor.id)}
+                        type="button"
+                        onClick={() => {
+                          setSelectedEntityId(toNumber(floor.id))
+                          setEditName(String(floor.name ?? ''))
+                          setEditArea(String(floor.area ?? ''))
+                          setEditPrice(String(floor.price ?? ''))
+                          setEditFacing(String(floor.facing ?? ''))
+                          setEditNote(String(floor.displayNote ?? ''))
+                        }}
+                        className={`rounded-[8px] border px-3 py-3 text-left text-[13px] ${
+                          selectedEntity?.id === floor.id ? 'border-[#B85412] bg-[#FFF7F1]' : 'border-[#EEF1FA] bg-white'
+                        }`}
+                      >
+                        <span className="block font-semibold text-[#13265C]">{String(floor.name)}</span>
+                        <span className="text-[#596498]">{titleCase(floor.status)}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-[8px] bg-[#F7F8FE] px-3 py-3 text-[13px] text-[#596498]">
+                    {String(selectedEntity.name)} is the sellable inventory currently selected.
+                  </div>
+                )}
+              </section>
+
               <div className="mt-5 grid grid-cols-4 gap-1 rounded-[10px] bg-[#F5F7FF] p-1">
                 {[
                   ['overview', 'Overview'],
@@ -929,32 +973,6 @@ export function InventoryPage({ data, onRefresh }: { data?: InventoryData; onRef
 
               {activeInfoTab === 'overview' ? (
                 <>
-              {selectedFloors.length ? (
-                <section className="mt-5">
-                  <h3 className="text-[15px] font-semibold text-[#13265C]">Floors under {String(selectedPlot?.code)}</h3>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {selectedFloors.map((floor) => (
-                      <button
-                        key={String(floor.id)}
-                        type="button"
-                        onClick={() => {
-                          setSelectedEntityId(toNumber(floor.id))
-                          setEditName(String(floor.name ?? ''))
-                          setEditArea(String(floor.area ?? ''))
-                          setEditPrice(String(floor.price ?? ''))
-                        }}
-                        className={`rounded-[8px] border px-3 py-3 text-left text-[13px] ${
-                          selectedEntity?.id === floor.id ? 'border-[#B85412] bg-[#FFF7F1]' : 'border-[#EEF1FA]'
-                        }`}
-                      >
-                        <span className="block font-semibold text-[#13265C]">{String(floor.name)}</span>
-                        <span className="text-[#596498]">{titleCase(floor.status)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
               <div className="mt-5 rounded-[16px] bg-[#F7F8FE] px-5 py-4 text-left">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[#596498]">Inventory Detail</p>
