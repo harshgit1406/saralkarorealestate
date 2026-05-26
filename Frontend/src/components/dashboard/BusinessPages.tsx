@@ -3,21 +3,32 @@ import {
   Banknote,
   Building2,
   CalendarClock,
+  CheckCircle2,
+  Clock3,
   FileText,
   Headphones,
   Landmark,
+  Mail,
+  MessageSquareText,
+  Plus,
   PhoneCall,
   ReceiptText,
+  Send,
   ShieldCheck,
+  Target,
+  TrendingUp,
   UserRound,
   Users,
 } from 'lucide-react'
-import { useState, type ElementType, type ReactNode } from 'react'
+import { useEffect, useState, type ElementType, type ReactNode } from 'react'
 import {
+  assignLead,
+  createLeadActivity,
+  createLeadFollowup,
+  createLeadSource,
   createLead,
   createRole,
   createBusinessResource,
-  deleteLead,
   dispatchAutoCalls,
   getAutoCallQueue,
   replaceRolePermissions,
@@ -154,9 +165,52 @@ export function LeadsPage({
 }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [status, setStatus] = useState('new')
+  const [email, setEmail] = useState('')
+  const [budgetMax, setBudgetMax] = useState('')
+  const [requirements, setRequirements] = useState('')
+  const [status] = useState('new')
+  const [priority, setPriority] = useState('medium')
+  const [projectId, setProjectId] = useState<number | ''>('')
+  const [sourceId, setSourceId] = useState<number | ''>('')
+  const [assignedTo, setAssignedTo] = useState<number | ''>('')
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null)
+  const [note, setNote] = useState('')
+  const [followupTitle, setFollowupTitle] = useState('Follow up with lead')
+  const [followupType, setFollowupType] = useState('call')
+  const [followupDueAt, setFollowupDueAt] = useState('')
+  const [integrationToken, setIntegrationToken] = useState('change-this-token')
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  const leads = data?.items ?? []
+  const selectedLead = leads.find((lead) => lead.id === selectedLeadId) ?? leads[0]
+  const selectedId = typeof selectedLead?.id === 'number' ? selectedLead.id : null
+  const activeLeads = leads.filter((lead) => !['won', 'lost', 'junk'].includes(String(lead.status)))
+  const overdueFollowups = (data?.followups ?? []).filter((followup) => {
+    if (followup.status !== 'pending' || !followup.dueAt) return false
+    return new Date(String(followup.dueAt)).getTime() < Date.now()
+  })
+  const pipelineStages = [
+    'new',
+    'attempted',
+    'contacted',
+    'qualified',
+    'site_visit_scheduled',
+    'site_visit_done',
+    'proposal_sent',
+    'negotiation',
+    'won',
+    'lost',
+  ]
+  const selectedLeadActivities = (data?.activities ?? []).filter((activity) => activity.leadId === selectedId)
+  const wonCount = data?.statusCounts?.won ?? 0
+  const conversionRate = leads.length ? Math.round((wonCount / leads.length) * 100) : 0
+
+  useEffect(() => {
+    if (!projectId && data?.projects?.[0]?.id) setProjectId(Number(data.projects[0].id))
+    if (!sourceId && data?.sources?.[0]?.id) setSourceId(Number(data.sources[0].id))
+    if (!assignedTo && data?.users?.[0]?.id) setAssignedTo(Number(data.users[0].id))
+  }, [assignedTo, data?.projects, data?.sources, data?.users, projectId, sourceId])
 
   const handleCreate = async () => {
     if (!name.trim() || !phone.trim()) {
@@ -169,15 +223,21 @@ export function LeadsPage({
       await createLead({
         name,
         phone,
+        email: email || undefined,
         status,
-        priority: 'medium',
-        project_id: data?.projects?.[0]?.id,
-        lead_source_id: data?.sources?.[0]?.id,
-        assigned_to: data?.users?.[0]?.id,
+        priority,
+        project_id: projectId || data?.projects?.[0]?.id,
+        lead_source_id: sourceId || data?.sources?.[0]?.id,
+        assigned_to: assignedTo || data?.users?.[0]?.id,
+        budget_max: Number(budgetMax || 0) || undefined,
+        requirements: requirements ? { note: requirements } : undefined,
         auto_call: true,
       })
       setName('')
       setPhone('')
+      setEmail('')
+      setBudgetMax('')
+      setRequirements('')
       onRefresh?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create lead.')
@@ -188,87 +248,251 @@ export function LeadsPage({
 
   const handleQuickStatus = async (id: unknown, nextStatus: string) => {
     if (typeof id !== 'number') return
-    await updateLead(id, { status: nextStatus })
+    await updateLead(id, {
+      status: nextStatus,
+      last_contacted_at: ['attempted', 'contacted', 'qualified'].includes(nextStatus)
+        ? new Date().toISOString()
+        : undefined,
+    })
     onRefresh?.()
   }
 
-  const handleDelete = async (id: unknown) => {
-    if (typeof id !== 'number') return
-    await deleteLead(id)
+  const handleAssign = async (userId: string) => {
+    if (!selectedId || !userId) return
+    await assignLead(selectedId, { assigned_to: Number(userId), reason: 'Manual reassignment from lead desk' })
+    onRefresh?.()
+  }
+
+  const handleAddNote = async () => {
+    if (!selectedId || !note.trim()) return
+    await createLeadActivity(selectedId, { activity_type: 'note', notes: note })
+    setNote('')
+    onRefresh?.()
+  }
+
+  const handleAddFollowup = async () => {
+    if (!selectedId || !followupTitle.trim() || !followupDueAt) return
+    await createLeadFollowup(selectedId, {
+      followup_type: followupType,
+      title: followupTitle,
+      notes: note || undefined,
+      assigned_to: selectedLead?.assignedToId,
+      due_at: followupDueAt,
+    })
+    await updateLead(selectedId, { next_follow_up_at: followupDueAt })
+    setFollowupTitle('Follow up with lead')
+    setFollowupDueAt('')
+    onRefresh?.()
+  }
+
+  const handleCreateIntegration = async (integration: Record<string, string | boolean | null>) => {
+    await createLeadSource({
+      source_name: integration.name,
+      source_key: integration.key,
+      source_type: integration.type,
+      is_active: true,
+      config: {
+        webhook_token: integrationToken,
+        auto_call: true,
+        default_assigned_to: assignedTo || data?.users?.[0]?.id,
+      },
+    })
     onRefresh?.()
   }
 
   return (
-    <PageShell title="Leads" subtitle="Simple lead list with owner, status, budget, and follow-up.">
-      <section className="mb-5 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] lg:grid-cols-[1fr_180px_160px_140px]">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Lead name"
-          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
-        />
-        <input
-          value={phone}
-          onChange={(event) => setPhone(event.target.value)}
-          placeholder="Phone"
-          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
-        />
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none"
-        >
-          {['new', 'contacted', 'qualified', 'site_visit_scheduled', 'won', 'lost'].map((item) => (
-            <option key={item} value={item}>
-              {titleCase(item)}
-            </option>
-          ))}
+    <PageShell title="Leads" subtitle="Agent lead desk for contact, followups, source performance, and portal integrations.">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Open Leads" value={activeLeads.length} icon={Target} />
+        <StatCard label="Overdue Followups" value={overdueFollowups.length} icon={Clock3} />
+        <StatCard label="Won" value={wonCount} icon={CheckCircle2} />
+        <StatCard label="Conversion" value={`${conversionRate}%`} icon={TrendingUp} />
+      </div>
+
+      <section className="mt-5 grid gap-4 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] xl:grid-cols-[1fr_160px_180px_150px]">
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lead name" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+        <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Phone" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+        <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+        <input value={budgetMax} onChange={(event) => setBudgetMax(event.target.value)} placeholder="Budget" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none" />
+        <select value={projectId} onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          <option value="">Project</option>
+          {(data?.projects ?? []).map((project) => <option key={String(project.id)} value={String(project.id)}>{String(project.name)}</option>)}
         </select>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={isSaving}
-          className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white disabled:opacity-60"
-        >
-          {isSaving ? 'Saving' : 'Add Lead'}
+        <select value={sourceId} onChange={(event) => setSourceId(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          <option value="">Source</option>
+          {(data?.sources ?? []).map((source) => <option key={String(source.id)} value={String(source.id)}>{String(source.source_name)}</option>)}
+        </select>
+        <select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value ? Number(event.target.value) : '')} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          <option value="">Owner</option>
+          {(data?.users ?? []).map((user) => <option key={String(user.id)} value={String(user.id)}>{String(user.full_name)}</option>)}
+        </select>
+        <select value={priority} onChange={(event) => setPriority(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none">
+          {['low', 'medium', 'high', 'urgent'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+        </select>
+        <textarea value={requirements} onChange={(event) => setRequirements(event.target.value)} placeholder="Requirement, unit type, location, notes..." rows={2} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] outline-none xl:col-span-3" />
+        <button type="button" onClick={handleCreate} disabled={isSaving} className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white disabled:opacity-60">
+          {isSaving ? 'Saving' : 'Add Lead + Auto Call'}
         </button>
-        {error ? <p className="text-[13px] font-medium text-[#B85412] lg:col-span-4">{error}</p> : null}
+        {error ? <p className="text-[13px] font-medium text-[#B85412] xl:col-span-4">{error}</p> : null}
       </section>
-      <DataTable
-        emptyText="No leads found."
-        rows={data?.items ?? []}
-        columns={[
-          { key: 'code', label: 'Code' },
-          { key: 'name', label: 'Lead' },
-          { key: 'phone', label: 'Phone' },
-          { key: 'project', label: 'Project' },
-          { key: 'assignedTo', label: 'Owner' },
-          { key: 'status', label: 'Status' },
-          { key: 'budgetMax', label: 'Budget', render: (row) => formatCurrency(row.budgetMax) },
-          {
-            key: 'actions',
-            label: 'Actions',
-            render: (row) => (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickStatus(row.id, 'contacted')}
-                  className="rounded-[8px] border border-[#E8D1C3] px-3 py-1 text-[12px] font-semibold"
-                >
-                  Contacted
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(row.id)}
-                  className="rounded-[8px] bg-[#FFF1E8] px-3 py-1 text-[12px] font-semibold text-[#B85412]"
-                >
-                  Delete
-                </button>
+
+      <Section title="Pipeline">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {pipelineStages.map((stage) => (
+            <button
+              key={stage}
+              type="button"
+              className="rounded-[8px] bg-white p-4 text-left shadow-[0_14px_34px_rgba(19,38,92,0.06)]"
+            >
+              <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#596498]">{titleCase(stage)}</p>
+              <p className="mt-2 text-[26px] font-bold text-[#13265C]">{data?.statusCounts?.[stage] ?? 0}</p>
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="rounded-[8px] bg-white shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+          <div className="border-b border-[#EEF1FA] px-5 py-4">
+            <h2 className="text-[16px] font-semibold text-[#13265C]">Agent Queue</h2>
+          </div>
+          <div className="max-h-[620px] overflow-auto">
+            {leads.map((lead) => (
+              <button
+                key={String(lead.id)}
+                type="button"
+                onClick={() => setSelectedLeadId(Number(lead.id))}
+                className={`grid w-full gap-3 border-b border-[#EEF1FA] px-5 py-4 text-left lg:grid-cols-[minmax(0,1fr)_120px_120px] ${
+                  selectedLead?.id === lead.id ? 'bg-[#FFF7F1]' : 'bg-white'
+                }`}
+              >
+                <div>
+                  <p className="font-semibold text-[#13265C]">{String(lead.name)}</p>
+                  <p className="mt-1 text-[13px] text-[#596498]">{String(lead.phone)} | {String(lead.source ?? 'Manual')}</p>
+                  <p className="mt-1 text-[12px] text-[#7A84AB]">{String(lead.project ?? 'No project')} | {String(lead.assignedTo ?? 'Unassigned')}</p>
+                </div>
+                <span className="h-fit rounded-full bg-[#F5F7FF] px-3 py-1 text-center text-[12px] font-semibold text-[#13265C]">{titleCase(lead.status)}</span>
+                <span className="h-fit rounded-full bg-[#FFF1E8] px-3 py-1 text-center text-[12px] font-semibold text-[#B85412]">{titleCase(lead.priority)}</span>
+              </button>
+            ))}
+            {!leads.length ? <p className="px-5 py-8 text-center text-[#596498]">No leads found.</p> : null}
+          </div>
+        </div>
+
+        <aside className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+          {selectedLead ? (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-[22px] font-bold text-[#13265C]">{String(selectedLead.name)}</h2>
+                  <p className="mt-1 text-[13px] text-[#596498]">{String(selectedLead.code)} | {titleCase(selectedLead.status)}</p>
+                </div>
+                <span className="rounded-full bg-[#F5F7FF] px-3 py-1 text-[12px] font-semibold text-[#13265C]">{formatCurrency(selectedLead.budgetMax)}</span>
               </div>
-            ),
-          },
-        ]}
-      />
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <a href={`tel:${String(selectedLead.phone)}`} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#13265C] px-3 py-2 text-[12px] font-semibold text-white"><PhoneCall className="h-4 w-4" /> Call</a>
+                <a href={`https://wa.me/${String(selectedLead.phone).replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-[8px] bg-[#1E9E57] px-3 py-2 text-[12px] font-semibold text-white"><MessageSquareText className="h-4 w-4" /> WhatsApp</a>
+                <a href={selectedLead.email ? `mailto:${String(selectedLead.email)}` : '#'} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#F5F7FF] px-3 py-2 text-[12px] font-semibold text-[#13265C]"><Mail className="h-4 w-4" /> Email</a>
+              </div>
+              <div className="mt-4 grid gap-2">
+                <select value={String(selectedLead.status)} onChange={(event) => handleQuickStatus(selectedLead.id, event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                  {pipelineStages.concat(['junk']).map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                </select>
+                <select value={String(selectedLead.assignedToId ?? '')} onChange={(event) => handleAssign(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                  <option value="">Assign owner</option>
+                  {(data?.users ?? []).map((user) => <option key={String(user.id)} value={String(user.id)}>{String(user.full_name)}</option>)}
+                </select>
+              </div>
+              <div className="mt-5 rounded-[8px] bg-[#F7F8FE] p-4 text-[13px] text-[#596498]">
+                <p>Source: <span className="font-semibold text-[#13265C]">{String(selectedLead.source ?? 'Manual')}</span></p>
+                <p className="mt-2">Calls: <span className="font-semibold text-[#13265C]">{String(selectedLead.totalCalls ?? 0)}</span></p>
+                <p className="mt-2">Next follow-up: <span className="font-semibold text-[#13265C]">{selectedLead.nextFollowUpAt ? new Date(String(selectedLead.nextFollowUpAt)).toLocaleString() : 'Not scheduled'}</span></p>
+              </div>
+              <div className="mt-5 grid gap-2">
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add note for timeline..." rows={3} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                <button type="button" onClick={handleAddNote} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#13265C] px-3 py-2 text-[13px] font-semibold text-white"><Send className="h-4 w-4" /> Add Note</button>
+              </div>
+              <div className="mt-5 grid gap-2">
+                <input value={followupTitle} onChange={(event) => setFollowupTitle(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={followupType} onChange={(event) => setFollowupType(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none">
+                    {['call', 'whatsapp', 'site_visit', 'meeting', 'email', 'task'].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                  </select>
+                  <input type="datetime-local" value={followupDueAt} onChange={(event) => setFollowupDueAt(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-2 text-[13px] outline-none" />
+                </div>
+                <button type="button" onClick={handleAddFollowup} className="flex items-center justify-center gap-2 rounded-[8px] bg-[#B85412] px-3 py-2 text-[13px] font-semibold text-white"><Plus className="h-4 w-4" /> Schedule Follow-up</button>
+              </div>
+              <Section title="Timeline">
+                <div className="max-h-[220px] space-y-2 overflow-auto">
+                  {selectedLeadActivities.map((activity) => (
+                    <div key={String(activity.id)} className="rounded-[8px] border border-[#EEF1FA] p-3 text-[13px]">
+                      <p className="font-semibold text-[#13265C]">{titleCase(activity.type)}</p>
+                      <p className="mt-1 text-[#596498]">{String(activity.notes ?? '')}</p>
+                    </div>
+                  ))}
+                  {!selectedLeadActivities.length ? <p className="text-[13px] text-[#596498]">No timeline notes yet.</p> : null}
+                </div>
+              </Section>
+            </>
+          ) : (
+            <p className="py-10 text-center text-[#596498]">Select a lead to manage contact, notes, and followups.</p>
+          )}
+        </aside>
+      </section>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <Section title="Platform Performance">
+          <DataTable
+            emptyText="No source performance yet."
+            rows={(data?.sourcePerformance ?? []) as RecordItem[]}
+            columns={[
+              { key: 'name', label: 'Platform' },
+              { key: 'type', label: 'Type' },
+              { key: 'total', label: 'Leads' },
+              { key: 'active', label: 'Active' },
+              { key: 'won', label: 'Won' },
+              { key: 'overdue', label: 'Overdue' },
+              { key: 'avgBudget', label: 'Avg Budget', render: (row) => formatCurrency(row.avgBudget) },
+            ]}
+          />
+        </Section>
+        <Section title="Portal Integrations">
+          <div className="grid gap-3">
+            <input value={integrationToken} onChange={(event) => setIntegrationToken(event.target.value)} placeholder="Webhook token for new sources" className="rounded-[8px] border border-[#EEF1FA] bg-white px-3 py-3 text-[13px] outline-none" />
+            {(data?.integrations ?? []).map((integration) => (
+              <article key={String(integration.key)} className="rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-[#13265C]">{String(integration.name)}</p>
+                    <p className="mt-1 text-[12px] text-[#596498]">{titleCase(integration.type)}</p>
+                  </div>
+                  {integration.connected ? (
+                    <span className="rounded-full bg-[#EAFBF0] px-3 py-1 text-[12px] font-semibold text-[#136C2E]">Connected</span>
+                  ) : (
+                    <button type="button" onClick={() => handleCreateIntegration(integration)} className="rounded-[8px] bg-[#13265C] px-3 py-2 text-[12px] font-semibold text-white">Connect</button>
+                  )}
+                </div>
+                <p className="mt-3 text-[12px] text-[#596498]">Webhook: /api/v1/leads/webhook/&lt;org&gt;/{String(integration.key)}?token=...</p>
+              </article>
+            ))}
+          </div>
+        </Section>
+      </section>
+
+      <Section title="Upcoming Follow-ups">
+        <DataTable
+          emptyText="No followups scheduled."
+          rows={(data?.followups ?? []) as RecordItem[]}
+          columns={[
+            { key: 'lead', label: 'Lead' },
+            { key: 'type', label: 'Type' },
+            { key: 'title', label: 'Title' },
+            { key: 'assignedTo', label: 'Owner' },
+            { key: 'status', label: 'Status' },
+            { key: 'dueAt', label: 'Due', render: (row) => row.dueAt ? new Date(String(row.dueAt)).toLocaleString() : 'Not set' },
+          ]}
+        />
+      </Section>
     </PageShell>
   )
 }
