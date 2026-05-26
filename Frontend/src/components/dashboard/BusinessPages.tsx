@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   Banknote,
+  Box,
   Building2,
   CheckCircle2,
   Clock3,
@@ -1171,13 +1172,37 @@ export function CommunicationPage({
   onRefresh?: () => void
 }) {
   const activeCall = data?.calls[0]
+  const summary = data?.summary ?? {}
+  const recipients = data?.recipients ?? []
+  const templates = data?.templates ?? []
   const [messageText, setMessageText] = useState('Thanks for your enquiry. Our sales team will call you shortly.')
+  const [recipientValue, setRecipientValue] = useState('')
+  const [channel, setChannel] = useState('whatsapp')
+  const [templateName, setTemplateName] = useState('')
+  const [templateContent, setTemplateContent] = useState('Thanks for your enquiry. Our sales team will call you shortly.')
   const [dispatchResult, setDispatchResult] = useState('')
+
+  const selectedRecipient = recipients.find((recipient) => `${String(recipient.type)}:${String(recipient.id)}` === recipientValue)
+
+  useEffect(() => {
+    if (!recipientValue && recipients[0]) {
+      setRecipientValue(`${String(recipients[0].type)}:${String(recipients[0].id)}`)
+    }
+  }, [recipientValue, recipients])
+
+  useEffect(() => {
+    if (!messageText && templates[0]?.content) {
+      setMessageText(String(templates[0].content))
+    }
+  }, [messageText, templates])
 
   const handleQueueMessage = async () => {
     await createBusinessResource('messages', {
-      channel: 'whatsapp',
-      recipient_phone: activeCall?.leadPhone ?? '+91 90000 00000',
+      lead_id: selectedRecipient?.type === 'lead' ? selectedRecipient.id : undefined,
+      customer_id: selectedRecipient?.type === 'customer' ? selectedRecipient.id : undefined,
+      channel,
+      recipient_phone: selectedRecipient?.phone ?? activeCall?.leadPhone ?? '+91 90000 00000',
+      recipient_email: selectedRecipient?.email,
       content: messageText,
       status: 'queued',
     })
@@ -1195,6 +1220,19 @@ export function CommunicationPage({
     onRefresh?.()
   }
 
+  const handleCreateTemplate = async () => {
+    if (!templateName.trim() || !templateContent.trim()) return
+    await createBusinessResource('message-templates', {
+      template_name: templateName,
+      channel,
+      content: templateContent,
+      variables: {},
+      is_active: true,
+    })
+    setTemplateName('')
+    onRefresh?.()
+  }
+
   const handleDispatchAutoCalls = async () => {
     const queue = await getAutoCallQueue()
     const pending = queue.items.filter((item) => item.status === 'queued').length
@@ -1205,8 +1243,15 @@ export function CommunicationPage({
   return (
     <PageShell
       title="Communication"
-      subtitle="Call demos between employee and lead, including AI or automated lead call triggers."
+      subtitle="Auto-call queue, WhatsApp/SMS/email messaging, templates, and communication history."
     >
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total Calls" value={summary.totalCalls ?? 0} icon={PhoneCall} />
+        <StatCard label="Queued Calls" value={summary.queuedCalls ?? 0} icon={Clock3} />
+        <StatCard label="Messages" value={summary.totalMessages ?? 0} icon={MessageSquareText} />
+        <StatCard label="Queued Msgs" value={summary.queuedMessages ?? 0} icon={Send} />
+      </div>
+
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="rounded-[8px] bg-white p-6 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
           <div className="flex items-center gap-3">
@@ -1232,97 +1277,183 @@ export function CommunicationPage({
           </p>
         </div>
       </section>
-      <section className="mt-5 grid gap-3 rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)] lg:grid-cols-[minmax(0,1fr)_140px_140px]">
-        <Field label="Message Text">
-        <input
-          value={messageText}
-          onChange={(event) => setMessageText(event.target.value)}
-          className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
-        />
-        </Field>
-        <button
-          type="button"
-          onClick={handleQueueMessage}
-          className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white"
-        >
-          Queue Msg
-        </button>
-        <button
-          type="button"
-          onClick={handleQueueCall}
-          className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white"
-        >
-          Queue Call
-        </button>
-        <button
-          type="button"
-          onClick={handleDispatchAutoCalls}
-          className="rounded-[8px] bg-[#1E9E57] px-4 py-3 text-[14px] font-semibold text-white lg:col-span-3"
-        >
-          Dispatch Auto Calls
-        </button>
-        {dispatchResult ? (
-          <p className="text-[13px] font-semibold text-[#13265C] lg:col-span-3">{dispatchResult}</p>
-        ) : null}
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+          <h2 className="text-[16px] font-semibold text-[#13265C]">Queue Communication</h2>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_180px]">
+            <Field label="Recipient">
+              <select value={recipientValue} onChange={(event) => setRecipientValue(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
+                <option value="">Manual / last lead</option>
+                {recipients.map((recipient) => (
+                  <option key={`${String(recipient.type)}-${String(recipient.id)}`} value={`${String(recipient.type)}:${String(recipient.id)}`}>
+                    {titleCase(recipient.type)} - {String(recipient.name)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Channel">
+              <select value={channel} onChange={(event) => setChannel(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none">
+                <option value="whatsapp">WhatsApp</option>
+                <option value="sms">SMS</option>
+                <option value="email">Email</option>
+              </select>
+            </Field>
+            <Field label="Template" className="lg:col-span-2">
+              <select
+                value=""
+                onChange={(event) => {
+                  const template = templates.find((item) => String(item.id) === event.target.value)
+                  if (template?.content) setMessageText(String(template.content))
+                }}
+                className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
+              >
+                <option value="">Use a saved template</option>
+                {templates.map((template) => (
+                  <option key={String(template.id)} value={String(template.id)}>{String(template.name)}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Message Text" className="lg:col-span-2">
+              <textarea
+                value={messageText}
+                onChange={(event) => setMessageText(event.target.value)}
+                rows={4}
+                className="resize-none rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
+              />
+            </Field>
+            <button type="button" onClick={handleQueueMessage} className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white">Queue Message</button>
+            <button type="button" onClick={handleQueueCall} className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white">Queue Call</button>
+            <button type="button" onClick={handleDispatchAutoCalls} className="rounded-[8px] bg-[#1E9E57] px-4 py-3 text-[14px] font-semibold text-white lg:col-span-2">Dispatch Auto Calls</button>
+            {dispatchResult ? <p className="text-[13px] font-semibold text-[#13265C] lg:col-span-2">{dispatchResult}</p> : null}
+          </div>
+        </div>
+
+        <div className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+          <h2 className="text-[16px] font-semibold text-[#13265C]">Message Templates</h2>
+          <div className="mt-4 grid gap-3">
+            <Field label="Template Name"><input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Site visit confirmation" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Template Content"><textarea value={templateContent} onChange={(event) => setTemplateContent(event.target.value)} rows={4} className="resize-none rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <button type="button" onClick={handleCreateTemplate} className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white">Save Template</button>
+          </div>
+          <div className="mt-4 max-h-[240px] space-y-2 overflow-auto pr-1">
+            {templates.map((template) => (
+              <button key={String(template.id)} type="button" onClick={() => setMessageText(String(template.content ?? ''))} className="block w-full rounded-[8px] border border-[#EEF1FA] p-3 text-left">
+                <span className="block text-[13px] font-semibold text-[#13265C]">{String(template.name)}</span>
+                <span className="mt-1 line-clamp-2 text-[12px] text-[#596498]">{String(template.content)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
-      <Section title="Call Sessions">
-        <DataTable
-          emptyText="No calls found."
-          rows={data?.calls ?? []}
-          columns={[
-            { key: 'lead', label: 'Lead' },
-            { key: 'leadPhone', label: 'Phone' },
-            { key: 'employee', label: 'Employee' },
-            { key: 'trigger', label: 'Trigger' },
-            { key: 'status', label: 'Status' },
-            { key: 'disposition', label: 'Disposition' },
-          ]}
-        />
-      </Section>
-      <Section title="Messages">
-        <DataTable
-          emptyText="No messages found."
-          rows={data?.messages ?? []}
-          columns={[
-            { key: 'channel', label: 'Channel' },
-            { key: 'recipient', label: 'Recipient' },
-            { key: 'content', label: 'Content' },
-            { key: 'status', label: 'Status' },
-          ]}
-        />
-      </Section>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Section title="Call History">
+          <DataTable
+            emptyText="No calls found."
+            rows={data?.calls ?? []}
+            columns={[
+              { key: 'lead', label: 'Lead' },
+              { key: 'leadPhone', label: 'Phone' },
+              { key: 'employee', label: 'Employee' },
+              { key: 'trigger', label: 'Trigger' },
+              { key: 'status', label: 'Status' },
+              { key: 'startedAt', label: 'Started' },
+            ]}
+          />
+        </Section>
+        <Section title="Message History">
+          <DataTable
+            emptyText="No messages found."
+            rows={data?.messages ?? []}
+            columns={[
+              { key: 'person', label: 'Person' },
+              { key: 'channel', label: 'Channel' },
+              { key: 'recipient', label: 'Recipient' },
+              { key: 'status', label: 'Status' },
+              { key: 'sentAt', label: 'Sent' },
+            ]}
+          />
+        </Section>
+      </div>
     </PageShell>
   )
 }
 
 export function ActivityPage({ data }: { data?: WorkspacePages['activity'] }) {
+  const summary = data?.summary ?? {}
+  const activityRows = data?.activities ?? []
+  const auditRows = data?.auditLogs ?? []
+
   return (
-    <PageShell title="Activity Log" subtitle="Operational activity and audit history from the database.">
-      <Section title="Activities">
-        <DataTable
-          emptyText="No activity found."
-          rows={data?.activities ?? []}
-          columns={[
-            { key: 'entityType', label: 'Entity' },
-            { key: 'type', label: 'Type' },
-            { key: 'description', label: 'Description' },
-            { key: 'user', label: 'User' },
-            { key: 'createdAt', label: 'Time' },
-          ]}
-        />
-      </Section>
-      <Section title="Audit">
-        <DataTable
-          emptyText="No audit entries found."
-          rows={data?.auditLogs ?? []}
-          columns={[
-            { key: 'entityType', label: 'Entity' },
-            { key: 'action', label: 'Action' },
-            { key: 'user', label: 'User' },
-            { key: 'createdAt', label: 'Time' },
-          ]}
-        />
-      </Section>
+    <PageShell title="History" subtitle="Operational timeline, security audit, and recent changes across the system.">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Timeline Items" value={summary.activities ?? activityRows.length} icon={Clock3} />
+        <StatCard label="Audit Events" value={summary.auditLogs ?? auditRows.length} icon={ShieldCheck} />
+        <StatCard label="Last Activity" value={activityRows[0]?.createdAt ? new Date(String(activityRows[0].createdAt)).toLocaleDateString() : 'None'} icon={FileText} />
+        <StatCard label="Last Audit" value={auditRows[0]?.createdAt ? new Date(String(auditRows[0].createdAt)).toLocaleDateString() : 'None'} icon={BadgeCheck} />
+      </div>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-5">
+          <Section title="Operational Timeline">
+            <div className="space-y-3">
+              {activityRows.map((activity, index) => (
+                <article key={`${String(activity.entityType)}-${String(activity.createdAt)}-${index}`} className="rounded-[8px] bg-white p-4 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[14px] font-semibold text-[#13265C]">{titleCase(activity.entityType)} · {titleCase(activity.type)}</p>
+                      <p className="mt-1 text-[13px] leading-6 text-[#596498]">{String(activity.description ?? 'Activity recorded')}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#F5F7FF] px-3 py-1 text-[11px] font-semibold text-[#596498]">
+                      {activity.createdAt ? new Date(String(activity.createdAt)).toLocaleString() : 'Recently'}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-[12px] text-[#7A84AB]">By {String(activity.user ?? 'System')}</p>
+                </article>
+              ))}
+              {!activityRows.length ? <p className="rounded-[8px] bg-white p-6 text-center text-[#596498]">No activity found.</p> : null}
+            </div>
+          </Section>
+          <Section title="Audit Trail">
+            <DataTable
+              emptyText="No audit entries found."
+              rows={auditRows}
+              columns={[
+                { key: 'entityType', label: 'Entity' },
+                { key: 'action', label: 'Action' },
+                { key: 'user', label: 'User' },
+                { key: 'createdAt', label: 'Time' },
+              ]}
+            />
+          </Section>
+        </div>
+
+        <aside className="space-y-5">
+          <section className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+            <h2 className="text-[16px] font-semibold text-[#13265C]">Activity By Area</h2>
+            <div className="mt-4 space-y-2">
+              {(data?.entityCounts ?? []).map((item) => (
+                <div key={String(item.entity_type)} className="flex items-center justify-between rounded-[8px] bg-[#F5F7FF] px-3 py-3 text-[13px]">
+                  <span className="font-semibold text-[#13265C]">{titleCase(item.entity_type)}</span>
+                  <span className="text-[#596498]">{String(item.count)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="rounded-[8px] bg-white p-5 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
+            <h2 className="text-[16px] font-semibold text-[#13265C]">Audit Actions</h2>
+            <div className="mt-4 space-y-2">
+              {(data?.auditActionCounts ?? []).map((item) => (
+                <div key={String(item.action)} className="flex items-center justify-between rounded-[8px] bg-[#FFF7F1] px-3 py-3 text-[13px]">
+                  <span className="font-semibold text-[#13265C]">{titleCase(item.action)}</span>
+                  <span className="text-[#B85412]">{String(item.count)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </section>
     </PageShell>
   )
 }
@@ -1334,49 +1465,112 @@ export function SettingsPage({
   data?: WorkspacePages['settings']
   onRefresh?: () => void
 }) {
+  const organization = data?.organization
+  const stats = data?.stats ?? {}
+  const [orgName, setOrgName] = useState(String(organization?.name ?? ''))
+  const [slug, setSlug] = useState(String(organization?.slug ?? ''))
   const [phone, setPhone] = useState(String(data?.organization?.phone ?? ''))
+  const [email, setEmail] = useState(String(organization?.email ?? ''))
+  const [address, setAddress] = useState(String(organization?.address ?? ''))
+  const [isActive, setIsActive] = useState(Boolean(organization?.is_active ?? true))
+  const [roleName, setRoleName] = useState('')
+  const [roleDescription, setRoleDescription] = useState('')
+
+  useEffect(() => {
+    setOrgName(String(organization?.name ?? ''))
+    setSlug(String(organization?.slug ?? ''))
+    setPhone(String(organization?.phone ?? ''))
+    setEmail(String(organization?.email ?? ''))
+    setAddress(String(organization?.address ?? ''))
+    setIsActive(Boolean(organization?.is_active ?? true))
+  }, [organization])
 
   const handleSaveOrg = async () => {
-    await updateOrganization({ phone })
+    await updateOrganization({
+      name: orgName,
+      slug,
+      phone,
+      email,
+      address,
+      is_active: isActive,
+    })
+    onRefresh?.()
+  }
+
+  const handleCreateSettingsRole = async () => {
+    if (!roleName.trim()) return
+    await createRole({
+      name: roleName,
+      description: roleDescription || 'Created from settings',
+      is_system: false,
+    })
+    setRoleName('')
+    setRoleDescription('')
     onRefresh?.()
   }
 
   return (
-    <PageShell title="Settings" subtitle="Organization profile and application role setup.">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <PageShell title="Settings" subtitle="Organization profile, account health, roles, and system readiness.">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <StatCard label="Users" value={stats.users ?? 0} icon={Users} />
+        <StatCard label="Projects" value={stats.projects ?? 0} icon={Building2} />
+        <StatCard label="Inventory" value={stats.inventory ?? 0} icon={Box} />
+        <StatCard label="Leads" value={stats.leads ?? 0} icon={Target} />
+        <StatCard label="Customers" value={stats.customers ?? 0} icon={UserRound} />
+        <StatCard label="Bookings" value={stats.bookings ?? 0} icon={ReceiptText} />
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_390px]">
         <article className="rounded-[8px] bg-white p-6 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
-          <h2 className="text-[17px] font-semibold text-[#13265C]">Organization</h2>
-          {Object.entries(data?.organization ?? {}).map(([key, value]) => (
-            <div key={key} className="mt-4 flex justify-between gap-4 border-b border-[#EEF1FA] pb-3 text-[14px]">
-              <span className="text-[#596498]">{titleCase(key)}</span>
-              <span className="text-right font-semibold text-[#13265C]">{String(value ?? 'Not set')}</span>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[#13265C]">Organization Profile</h2>
+              <p className="mt-1 text-[13px] text-[#596498]">These values are used across invoices, workspace identity, and login context.</p>
             </div>
-          ))}
-          <div className="mt-5 flex items-end gap-3">
-            <Field label="Organization Phone" className="min-w-0 flex-1">
-            <input
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              placeholder="Organization phone"
-              className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none"
-            />
+            <label className="flex items-center gap-2 rounded-full bg-[#F5F7FF] px-3 py-2 text-[12px] font-semibold text-[#13265C]">
+              <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
+              Active
+            </label>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <Field label="Organization Name"><input value={orgName} onChange={(event) => setOrgName(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Slug"><input value={slug} onChange={(event) => setSlug(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Phone"><input value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Email"><input value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Address" className="md:col-span-2">
+              <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={4} className="resize-none rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" />
             </Field>
-            <button
-              type="button"
-              onClick={handleSaveOrg}
-              className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white"
-            >
+            <button type="button" onClick={handleSaveOrg} className="rounded-[8px] bg-[#B85412] px-4 py-3 text-[14px] font-semibold text-white md:col-span-2">
               Save
             </button>
           </div>
         </article>
+
         <article className="rounded-[8px] bg-white p-6 shadow-[0_14px_34px_rgba(19,38,92,0.06)]">
-          <h2 className="text-[17px] font-semibold text-[#13265C]">Roles</h2>
+          <h2 className="text-[17px] font-semibold text-[#13265C]">Create Role</h2>
+          <div className="mt-4 grid gap-3">
+            <Field label="Role Name"><input value={roleName} onChange={(event) => setRoleName(event.target.value)} placeholder="Sales Manager" className="rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <Field label="Description"><textarea value={roleDescription} onChange={(event) => setRoleDescription(event.target.value)} rows={3} className="resize-none rounded-[8px] border border-[#EEF1FA] px-3 py-3 text-[14px] font-normal text-[#13265C] outline-none" /></Field>
+            <button type="button" onClick={handleCreateSettingsRole} className="rounded-[8px] bg-[#13265C] px-4 py-3 text-[14px] font-semibold text-white">Create Role</button>
+          </div>
+
+          <h2 className="mt-6 text-[17px] font-semibold text-[#13265C]">Roles</h2>
           <div className="mt-4 space-y-3">
             {(data?.roles ?? []).map((role) => (
               <div key={String(role.name)} className="rounded-[8px] border border-[#EEF1FA] p-4">
-                <p className="text-[14px] font-semibold text-[#13265C]">{String(role.name)}</p>
-                <p className="mt-1 text-[13px] text-[#596498]">{String(role.description ?? 'No description')}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[14px] font-semibold text-[#13265C]">{String(role.name)}</p>
+                    <p className="mt-1 text-[13px] text-[#596498]">{String(role.description ?? 'No description')}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${role.is_system ? 'bg-[#EAFBF0] text-[#136C2E]' : 'bg-[#F5F7FF] text-[#13265C]'}`}>
+                    {role.is_system ? 'System' : 'Custom'}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[12px] text-[#596498]">
+                  <span className="rounded-[8px] bg-[#F7F8FE] px-3 py-2">{String(role.users_count ?? 0)} users</span>
+                  <span className="rounded-[8px] bg-[#F7F8FE] px-3 py-2">{String(role.permissions_count ?? 0)} permissions</span>
+                </div>
               </div>
             ))}
           </div>

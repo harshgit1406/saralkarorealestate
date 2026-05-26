@@ -61,16 +61,23 @@ export type WorkspacePages = {
     attendanceSummary?: Array<Record<string, unknown>>
   }
   communication: {
-    calls: Array<Record<string, string | null>>
-    messages: Array<Record<string, string | null>>
+    summary?: Record<string, number>
+    calls: Array<Record<string, unknown>>
+    messages: Array<Record<string, unknown>>
+    templates?: Array<Record<string, unknown>>
+    recipients?: Array<Record<string, unknown>>
   }
   activity: {
-    activities: Array<Record<string, string | null>>
-    auditLogs: Array<Record<string, string | null>>
+    summary?: Record<string, number>
+    entityCounts?: Array<Record<string, unknown>>
+    auditActionCounts?: Array<Record<string, unknown>>
+    activities: Array<Record<string, unknown>>
+    auditLogs: Array<Record<string, unknown>>
   }
   settings: {
-    organization: Record<string, string | boolean | null> | null
-    roles: Array<Record<string, string | boolean | null>>
+    organization: Record<string, unknown> | null
+    roles: Array<Record<string, unknown>>
+    stats?: Record<string, number>
   }
 }
 

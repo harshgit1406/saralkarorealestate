@@ -89,7 +89,7 @@ export function OverviewPage({
   onRefresh,
 }: {
   metrics?: Record<string, number>
-  activities?: Array<Record<string, string | null>>
+  activities?: Array<Record<string, unknown>>
   currentUserName: string
   leadLookups?: WorkspacePages['leads']
   onNavigate?: (page: string) => void
@@ -106,8 +106,8 @@ export function OverviewPage({
   const recentActivities = activities.length
     ? activities.slice(0, 3).map((activity) => ({
         title: titleCase(activity.type),
-        detail: activity.description ?? 'Activity recorded',
-        time: activity.createdAt ? new Date(activity.createdAt).toLocaleString() : 'Recently',
+        detail: String(activity.description ?? 'Activity recorded'),
+        time: activity.createdAt ? new Date(String(activity.createdAt)).toLocaleString() : 'Recently',
         tone:
           activity.type === 'received'
             ? 'bg-[#EAF9EF] text-[#16A34A]'

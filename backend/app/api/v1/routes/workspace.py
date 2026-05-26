@@ -1084,6 +1084,18 @@ async def fetch_hrms(connection: asyncpg.Connection, organization_id: int) -> di
 
 
 async def fetch_communication(connection: asyncpg.Connection, organization_id: int) -> dict:
+    summary = await connection.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM call_sessions WHERE organization_id = $1) AS total_calls,
+            (SELECT COUNT(*) FROM call_sessions WHERE organization_id = $1 AND status = 'queued') AS queued_calls,
+            (SELECT COUNT(*) FROM call_sessions WHERE organization_id = $1 AND status IN ('completed', 'answered')) AS completed_calls,
+            (SELECT COUNT(*) FROM outbound_messages WHERE organization_id = $1) AS total_messages,
+            (SELECT COUNT(*) FROM outbound_messages WHERE organization_id = $1 AND status = 'queued') AS queued_messages,
+            (SELECT COUNT(*) FROM outbound_messages WHERE organization_id = $1 AND status IN ('sent', 'delivered')) AS sent_messages
+        """,
+        organization_id,
+    )
     calls = await connection.fetch(
         """
         SELECT
@@ -1101,21 +1113,66 @@ async def fetch_communication(connection: asyncpg.Connection, organization_id: i
         LEFT JOIN users u ON u.id = cs.assigned_user_id
         WHERE cs.organization_id = $1
         ORDER BY cs.created_at DESC
-        LIMIT 12
+        LIMIT 30
         """,
         organization_id,
     )
     messages = await connection.fetch(
         """
-        SELECT om.channel, om.recipient_phone, om.recipient_email, om.content, om.status, om.sent_at
+        SELECT
+            om.id,
+            om.channel,
+            om.recipient_phone,
+            om.recipient_email,
+            om.content,
+            om.status,
+            om.sent_at,
+            l.name AS lead_name,
+            c.full_name AS customer_name,
+            u.full_name AS sent_by_name
         FROM outbound_messages om
+        LEFT JOIN leads l ON l.id = om.lead_id
+        LEFT JOIN customers c ON c.id = om.customer_id
+        LEFT JOIN users u ON u.id = om.sent_by
         WHERE om.organization_id = $1
         ORDER BY om.created_at DESC
-        LIMIT 10
+        LIMIT 30
+        """,
+        organization_id,
+    )
+    templates = await connection.fetch(
+        """
+        SELECT id, template_name, channel, content, is_active
+        FROM message_templates
+        WHERE organization_id = $1
+        ORDER BY is_active DESC, template_name
+        LIMIT 30
+        """,
+        organization_id,
+    )
+    recipients = await connection.fetch(
+        """
+        SELECT 'lead' AS type, id, name, phone, email
+        FROM leads
+        WHERE organization_id = $1
+        UNION ALL
+        SELECT 'customer' AS type, id, full_name AS name, phone, email
+        FROM customers
+        WHERE organization_id = $1
+        ORDER BY name
+        LIMIT 100
         """,
         organization_id,
     )
     return {
+        "summary": {
+            "totalCalls": summary["total_calls"],
+            "queuedCalls": summary["queued_calls"],
+            "completedCalls": summary["completed_calls"],
+            "totalMessages": summary["total_messages"],
+            "queuedMessages": summary["queued_messages"],
+            "sentMessages": summary["sent_messages"],
+        },
         "calls": [
             {
                 "id": str(row["id"]),
@@ -1132,18 +1189,63 @@ async def fetch_communication(connection: asyncpg.Connection, organization_id: i
         ],
         "messages": [
             {
+                "id": row["id"],
                 "channel": row["channel"],
                 "recipient": row["recipient_phone"] or row["recipient_email"],
+                "person": row["lead_name"] or row["customer_name"],
                 "content": row["content"],
                 "status": row["status"],
                 "sentAt": row["sent_at"],
+                "sentBy": row["sent_by_name"],
             }
             for row in messages
+        ],
+        "templates": [
+            {
+                "id": row["id"],
+                "name": row["template_name"],
+                "channel": row["channel"],
+                "content": row["content"],
+                "active": row["is_active"],
+            }
+            for row in templates
+        ],
+        "recipients": [
+            {
+                "type": row["type"],
+                "id": row["id"],
+                "name": row["name"],
+                "phone": row["phone"],
+                "email": row["email"],
+            }
+            for row in recipients
         ],
     }
 
 
 async def fetch_activity(connection: asyncpg.Connection, organization_id: int) -> dict:
+    summary_rows = await connection.fetch(
+        """
+        SELECT entity_type, COUNT(*) AS count
+        FROM activities
+        WHERE organization_id = $1
+        GROUP BY entity_type
+        ORDER BY count DESC
+        LIMIT 8
+        """,
+        organization_id,
+    )
+    audit_summary_rows = await connection.fetch(
+        """
+        SELECT action, COUNT(*) AS count
+        FROM audit_logs
+        WHERE organization_id = $1
+        GROUP BY action
+        ORDER BY count DESC
+        LIMIT 8
+        """,
+        organization_id,
+    )
     activity_rows = await connection.fetch(
         """
         SELECT a.entity_type, a.activity_type, a.description, a.created_at, u.full_name
@@ -1167,6 +1269,12 @@ async def fetch_activity(connection: asyncpg.Connection, organization_id: int) -
         organization_id,
     )
     return {
+        "summary": {
+            "activities": sum(row["count"] for row in summary_rows),
+            "auditLogs": sum(row["count"] for row in audit_summary_rows),
+        },
+        "entityCounts": [dict(row) for row in summary_rows],
+        "auditActionCounts": [dict(row) for row in audit_summary_rows],
         "activities": [
             {
                 "entityType": row["entity_type"],
@@ -1192,7 +1300,7 @@ async def fetch_activity(connection: asyncpg.Connection, organization_id: int) -
 async def fetch_settings(connection: asyncpg.Connection, organization_id: int) -> dict:
     organization = await connection.fetchrow(
         """
-        SELECT name, slug, phone, email, address, is_active
+        SELECT name, slug, phone, email, address, is_active, created_at, updated_at
         FROM organizations
         WHERE id = $1
         """,
@@ -1200,16 +1308,38 @@ async def fetch_settings(connection: asyncpg.Connection, organization_id: int) -
     )
     roles = await connection.fetch(
         """
-        SELECT name, description, is_system
-        FROM roles
-        WHERE organization_id = $1
-        ORDER BY is_system DESC, name
+        SELECT
+            r.id,
+            r.name,
+            r.description,
+            r.is_system,
+            COUNT(DISTINCT ur.user_id) AS users_count,
+            COUNT(DISTINCT rp.permission_id) AS permissions_count
+        FROM roles r
+        LEFT JOIN user_roles ur ON ur.role_id = r.id
+        LEFT JOIN role_permissions rp ON rp.role_id = r.id
+        WHERE r.organization_id = $1
+        GROUP BY r.id
+        ORDER BY r.is_system DESC, r.name
+        """,
+        organization_id,
+    )
+    stats = await connection.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM users WHERE organization_id = $1) AS users,
+            (SELECT COUNT(*) FROM projects WHERE organization_id = $1) AS projects,
+            (SELECT COUNT(*) FROM inventory_entities WHERE organization_id = $1) AS inventory,
+            (SELECT COUNT(*) FROM leads WHERE organization_id = $1) AS leads,
+            (SELECT COUNT(*) FROM customers WHERE organization_id = $1) AS customers,
+            (SELECT COUNT(*) FROM bookings WHERE organization_id = $1) AS bookings
         """,
         organization_id,
     )
     return {
         "organization": dict(organization) if organization else None,
         "roles": [dict(row) for row in roles],
+        "stats": dict(stats) if stats else {},
     }
 
 
